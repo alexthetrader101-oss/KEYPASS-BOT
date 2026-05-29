@@ -34,18 +34,20 @@ function extractURL(text) {
 // ─────────────────────────────────────────
 
 async function scrapeLuma(url) {
-  const { data } = await axios.get(url, {
+  const slug = url.split('/').pop().split('?')[0];
+  const { data } = await axios.get(`https://api.lu.ma/public/v1/event/get?url_slug=${slug}`, {
     headers: { 'User-Agent': 'Mozilla/5.0' }
   });
-  const $ = cheerio.load(data);
-  const name = $('h1').first().text().trim() || 'Event';
-  const date = $('[class*="date"], [class*="time"]').first().text().trim() || 'See event page';
-  const location = $('[class*="location"], [class*="venue"]').first().text().trim() || 'See event page';
-  const description = $('meta[name="description"]').attr('content') || '';
+  const event = data.event;
+  const name = event.name || 'Event';
+  const date = event.start_at ? new Date(event.start_at).toLocaleString() : 'See event page';
+  const location = event.location_summary || (event.geo_address_info && event.geo_address_info.full_address) || 'See event page';
+  const description = event.description || '';
   return { name, date, location, description };
 }
 
 async function scrapePartiful(url) {
+  // Partiful uses JavaScript rendering so we use Open Graph meta as best effort
   const { data } = await axios.get(url, {
     headers: { 'User-Agent': 'Mozilla/5.0' }
   });
@@ -106,7 +108,6 @@ async function scrapeEventbrite(url) {
 // ─────────────────────────────────────────
 
 async function generatePass(eventData, eventUrl) {
-  // Returns a binary .pkpass file
   const response = await axios.post(
     'https://api.walletwallet.dev/api/pkpass',
     {
@@ -137,7 +138,6 @@ async function generatePass(eventData, eventUrl) {
     }
   );
 
-  // Save the .pkpass file and serve it
   const fs = require('fs');
   const path = require('path');
   const fileName = `pass_${Date.now()}.pkpass`;
@@ -211,7 +211,7 @@ app.post('/webhook/inbound', async (req, res) => {
   } catch (err) {
     console.error('Error generating pass:', err.message);
     await twilioClient.messages.create({
-      body: `❌ Something went wrong. Make sure the link is public and try again.`,
+      body: `❌ Something went wrong: ${err.message}`,
       from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
       to: fromNumber
     });

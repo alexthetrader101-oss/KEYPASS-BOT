@@ -105,39 +105,65 @@ async function scrapeEventbrite(url) {
 // PASS GENERATOR (WalletWallet)
 // ─────────────────────────────────────────
 
-async function generatePass(eventData) {
+async function generatePass(eventData, eventUrl) {
+  // Returns a binary .pkpass file
   const response = await axios.post(
-    'https://api.walletwallet.dev/passes',
+    'https://api.walletwallet.dev/api/pkpass',
     {
-      type: 'eventTicket',
-      organizationName: 'Keypass Bot',
+      barcodeValue: eventUrl,
+      barcodeFormat: 'QR',
+      logoText: eventData.name,
       description: eventData.name,
-      foregroundColor: 'rgb(255,255,255)',
-      backgroundColor: 'rgb(0,0,0)',
-      fields: {
-        headerFields: [
-          { key: 'event', label: 'EVENT', value: eventData.name }
-        ],
-        primaryFields: [
-          { key: 'date', label: 'DATE & TIME', value: eventData.date }
-        ],
-        secondaryFields: [
-          { key: 'location', label: 'LOCATION', value: eventData.location }
-        ],
-        auxiliaryFields: [
-          { key: 'desc', label: 'INFO', value: eventData.description.slice(0, 100) }
-        ]
-      }
+      organizationName: 'Keypass Bot',
+      primaryFields: [
+        { label: 'EVENT', value: eventData.name }
+      ],
+      secondaryFields: [
+        { label: 'DATE', value: eventData.date },
+        { label: 'LOCATION', value: eventData.location }
+      ],
+      backFields: [
+        { label: 'INFO', value: eventData.description.slice(0, 200) }
+      ],
+      colorPreset: 'dark',
+      expirationDays: 30
     },
     {
       headers: {
         Authorization: `Bearer ${process.env.WALLETWALLET_API_KEY}`,
         'Content-Type': 'application/json'
-      }
+      },
+      responseType: 'arraybuffer'
     }
   );
-  return response.data.passUrl;
+
+  // Save the .pkpass file and serve it
+  const fs = require('fs');
+  const path = require('path');
+  const fileName = `pass_${Date.now()}.pkpass`;
+  const filePath = path.join('/tmp', fileName);
+  fs.writeFileSync(filePath, response.data);
+
+  const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+  return `${baseUrl}/passes/${fileName}`;
 }
+
+// ─────────────────────────────────────────
+// SERVE PASS FILES
+// ─────────────────────────────────────────
+
+app.get('/passes/:filename', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  const filePath = path.join('/tmp', req.params.filename);
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', 'application/vnd.apple.pkpass');
+    res.setHeader('Content-Disposition', `attachment; filename="${req.params.filename}"`);
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('Pass not found');
+  }
+});
 
 // ─────────────────────────────────────────
 // WEBHOOK — incoming WhatsApp message
@@ -145,7 +171,7 @@ async function generatePass(eventData) {
 
 app.post('/webhook/inbound', async (req, res) => {
   const incomingMsg = req.body.Body || '';
-  const fromNumber = req.body.From || ''; // will be whatsapp:+1xxxxxxxxxx
+  const fromNumber = req.body.From || '';
 
   console.log(`Received WhatsApp message from ${fromNumber}: ${incomingMsg}`);
 
@@ -174,7 +200,7 @@ app.post('/webhook/inbound', async (req, res) => {
     if (site === 'partiful') eventData = await scrapePartiful(url);
     if (site === 'eventbrite') eventData = await scrapeEventbrite(url);
 
-    const passUrl = await generatePass(eventData);
+    const passUrl = await generatePass(eventData, url);
 
     await twilioClient.messages.create({
       body: `✅ Here's your pass for "${eventData.name}"!\n\nTap to add to Apple Wallet:\n${passUrl}`,
@@ -183,7 +209,7 @@ app.post('/webhook/inbound', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Error:', err.message);
+    console.error('Error generating pass:', err.message);
     await twilioClient.messages.create({
       body: `❌ Something went wrong. Make sure the link is public and try again.`,
       from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
@@ -200,5 +226,7 @@ app.post('/webhook/inbound', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
+  console.log(`Keypass bot running on port ${PORT}`);
+});
   console.log(`Keypass bot running on port ${PORT}`);
 });

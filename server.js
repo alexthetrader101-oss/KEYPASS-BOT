@@ -2,7 +2,6 @@ const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const twilio = require('twilio');
-const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -39,12 +38,10 @@ async function scrapeLuma(url) {
     headers: { 'User-Agent': 'Mozilla/5.0' }
   });
   const $ = cheerio.load(data);
-
   const name = $('h1').first().text().trim() || 'Event';
   const date = $('[class*="date"], [class*="time"]').first().text().trim() || 'See event page';
   const location = $('[class*="location"], [class*="venue"]').first().text().trim() || 'See event page';
   const description = $('meta[name="description"]').attr('content') || '';
-
   return { name, date, location, description };
 }
 
@@ -53,28 +50,22 @@ async function scrapePartiful(url) {
     headers: { 'User-Agent': 'Mozilla/5.0' }
   });
   const $ = cheerio.load(data);
-
-  // Partiful stores event data in meta tags and JSON-LD
   const name =
     $('meta[property="og:title"]').attr('content') ||
     $('h1').first().text().trim() ||
     'Party';
-
   const date =
     $('meta[property="event:start_time"]').attr('content') ||
     $('[class*="date"], [class*="time"]').first().text().trim() ||
     'See invite';
-
   const location =
     $('meta[property="event:location"]').attr('content') ||
     $('[class*="location"], [class*="address"]').first().text().trim() ||
     'See invite';
-
   const description =
     $('meta[property="og:description"]').attr('content') ||
     $('meta[name="description"]').attr('content') ||
     '';
-
   return { name, date, location, description };
 }
 
@@ -83,14 +74,10 @@ async function scrapeEventbrite(url) {
     headers: { 'User-Agent': 'Mozilla/5.0' }
   });
   const $ = cheerio.load(data);
-
-  // Eventbrite has good meta and structured data
   const name =
     $('meta[property="og:title"]').attr('content') ||
     $('h1').first().text().trim() ||
     'Event';
-
-  // Try JSON-LD first (most reliable for Eventbrite)
   let date = '';
   let location = '';
   $('script[type="application/ld+json"]').each((_, el) => {
@@ -105,15 +92,12 @@ async function scrapeEventbrite(url) {
       }
     } catch (e) {}
   });
-
   if (!date) date = $('[class*="date"], [class*="time"]').first().text().trim() || 'See event page';
   if (!location) location = $('[class*="location"], [class*="venue"]').first().text().trim() || 'See event page';
-
   const description =
     $('meta[property="og:description"]').attr('content') ||
     $('meta[name="description"]').attr('content') ||
     '';
-
   return { name, date, location, description };
 }
 
@@ -156,14 +140,14 @@ async function generatePass(eventData) {
 }
 
 // ─────────────────────────────────────────
-// WEBHOOK — incoming SMS/iMessage
+// WEBHOOK — incoming WhatsApp message
 // ─────────────────────────────────────────
 
 app.post('/webhook/inbound', async (req, res) => {
   const incomingMsg = req.body.Body || '';
-  const fromNumber = req.body.From || '';
+  const fromNumber = req.body.From || ''; // will be whatsapp:+1xxxxxxxxxx
 
-  console.log(`Received message from ${fromNumber}: ${incomingMsg}`);
+  console.log(`Received WhatsApp message from ${fromNumber}: ${incomingMsg}`);
 
   const url = extractURL(incomingMsg);
   const site = url ? detectSite(url) : null;
@@ -171,7 +155,7 @@ app.post('/webhook/inbound', async (req, res) => {
   if (!url || !site) {
     await twilioClient.messages.create({
       body: `👋 Send me a Luma, Partiful, or Eventbrite event link and I'll add it to your Apple Wallet!`,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
       to: fromNumber
     });
     res.sendStatus(200);
@@ -181,7 +165,7 @@ app.post('/webhook/inbound', async (req, res) => {
   try {
     await twilioClient.messages.create({
       body: `Got it! Building your pass now... 🎟️`,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
       to: fromNumber
     });
 
@@ -194,7 +178,7 @@ app.post('/webhook/inbound', async (req, res) => {
 
     await twilioClient.messages.create({
       body: `✅ Here's your pass for "${eventData.name}"!\n\nTap to add to Apple Wallet:\n${passUrl}`,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
       to: fromNumber
     });
 
@@ -202,7 +186,7 @@ app.post('/webhook/inbound', async (req, res) => {
     console.error('Error:', err.message);
     await twilioClient.messages.create({
       body: `❌ Something went wrong. Make sure the link is public and try again.`,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
       to: fromNumber
     });
   }

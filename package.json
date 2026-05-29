@@ -1,0 +1,16 @@
+{
+  "name": "keypass-bot",
+  "version": "1.0.0",
+  "description": "iMessage bot that turns event links into Apple Wallet passes",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "twilio": "^4.19.0"
+  }
+}

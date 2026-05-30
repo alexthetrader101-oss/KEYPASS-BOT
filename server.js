@@ -24,7 +24,7 @@ async function sendMessage(chatId, text) {
   });
 }
 
-// ─── PASS CLEANUP (delete passes older than 24hrs) ───────────────────────────
+// ─── PASS CLEANUP ────────────────────────────────────────────────────────────
 
 function cleanupOldPasses() {
   const tmpDir = '/tmp';
@@ -39,7 +39,7 @@ function cleanupOldPasses() {
     }
   }
 }
-setInterval(cleanupOldPasses, 60 * 60 * 1000); // run every hour
+setInterval(cleanupOldPasses, 60 * 60 * 1000);
 
 // ─── SCRAPE HEADERS ──────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ const SCRAPE_HEADERS = {
   'Connection': 'keep-alive'
 };
 
-// ─── SITE DETECTION ──────────────────────────────────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 
 function detectSite(url) {
   if (url.includes('lu.ma') || url.includes('luma.com')) return 'luma';
@@ -81,7 +81,17 @@ function colorForSite(site) {
   return map[site] || 'dark';
 }
 
-// ─── GENERATORS ──────────────────────────────────────────────────────────────
+async function validateImage(url) {
+  if (!url) return null;
+  try {
+    const response = await axios.head(url, { timeout: 3000, headers: SCRAPE_HEADERS });
+    const contentType = response.headers['content-type'] || '';
+    if (contentType.startsWith('image/')) return url;
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
 
 function generateTicketNumber() {
   return 'TKT-' + Math.random().toString(36).toUpperCase().slice(2, 7);
@@ -254,7 +264,6 @@ async function scrapeAMC(url) {
         }
         location = (item.location && item.location.name) || '';
         rating = item.contentRating || '';
-        // duration is ISO 8601 e.g. PT2H15M
         if (item.duration) {
           const match = item.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
           if (match) {
@@ -340,6 +349,8 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
   const isMovie = site === 'amc' || site === 'cinemark';
   const color = colorForSite(site);
 
+  const validatedImage = await validateImage(eventData.image);
+
   const passholderField = passholder
     ? [{ label: 'PASSHOLDER', value: passholder.toUpperCase() }]
     : [];
@@ -351,7 +362,7 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
     description: eventData.name,
     organizationName: 'Keypass',
     colorPreset: color,
-    ...(eventData.image ? { stripImage: eventData.image } : {}),
+    ...(validatedImage ? { stripImage: validatedImage } : {}),
     headerFields: [
       { label: 'DATE', value: eventData.date }
     ],
@@ -475,7 +486,7 @@ app.post('/webhook/inbound', async (req, res) => {
   // ── /help command ──
   if (incomingMsg === '/help') {
     await sendMessage(chatId,
-      `🎟️ *Keypass Bot*\n\nSupported sites:\n• lu.ma\n• eventbrite.com\n• dice.fm\n• feverup.com\n• amctheatres.com\n• cinemark.com\n\nSend one or more URLs to generate passes.\nSend /last to resend your last pass.`
+      `🎟️ Keypass Bot\n\nSupported sites:\n• lu.ma\n• eventbrite.com\n• dice.fm\n• feverup.com\n• amctheatres.com\n• cinemark.com\n\nSend one or more URLs to generate passes.\nSend /last to resend your last pass.`
     );
     return;
   }
@@ -498,7 +509,7 @@ app.post('/webhook/inbound', async (req, res) => {
           ? `AUDITORIUM: ${auditorium} | ROW: ${row} | SEAT: ${seat} | TICKET: ${ticketNumber}`
           : `SECTION: ${section} | ROW: ${row} | SEAT: ${seat} | GATE: ${gate} | TICKET: ${ticketNumber}`;
 
-        await sendMessage(chatId, `✅ *${eventData.name}*\n${details}\n\nTap to add to Apple Wallet:\n${passUrl}`);
+        await sendMessage(chatId, `✅ ${eventData.name}\n${details}\n\nTap to add to Apple Wallet:\n${passUrl}`);
       } catch (err) {
         console.error(err);
         await sendMessage(chatId, `❌ Failed to generate pass for ${url}: ${err.message}`);
@@ -513,7 +524,6 @@ app.post('/webhook/inbound', async (req, res) => {
 
   if (validUrls.length === 0) return;
 
-  // Scrape all URLs
   await sendMessage(chatId, `Fetching details for ${validUrls.length} link${validUrls.length > 1 ? 's' : ''}...`);
 
   const results = [];
@@ -532,21 +542,17 @@ app.post('/webhook/inbound', async (req, res) => {
   let preview = `Here's what I found:\n\n`;
   for (const { eventData, site } of results) {
     const isMovie = site === 'amc' || site === 'cinemark';
-    preview += `🎟️ *${eventData.name}*\n`;
+    preview += `🎟️ ${eventData.name}\n`;
     preview += `📅 ${eventData.date}${eventData.time ? ' @ ' + eventData.time : ''}\n`;
     preview += `📍 ${eventData.location}\n`;
     if (isMovie && eventData.rating) preview += `🎬 ${eventData.rating}${eventData.runtime ? ' · ' + eventData.runtime : ''}\n`;
     preview += `\n`;
   }
 
-  const isAnyMovie = results.some(r => r.site === 'amc' || r.site === 'cinemark');
-  preview += isAnyMovie
-    ? `What name should go on the pass? Reply with a name or *skip*`
-    : `What name should go on the pass? Reply with a name or *skip*`;
+  preview += `What name should go on the pass? Reply with a name or "skip"`;
 
   await sendMessage(chatId, preview);
 
-  // Save pending state
   userState[chatId] = {
     waitingForName: true,
     pendingPasses: results

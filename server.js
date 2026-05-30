@@ -26,23 +26,46 @@ function extractURL(text) {
 }
 
 async function scrapeLuma(url) {
-  const slug = url.replace(/\?.*$/, '').split('/').pop();
+  const slug = url.replace(/\?.*$/, '').replace(/,+$/, '').split('/').pop();
   console.log(`Luma slug: ${slug}`);
-  const { data } = await axios.get(`https://api.lu.ma/public/v1/event/get?url_slug=${slug}`, {
-    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
-  });
-  console.log(`Luma API response: ${JSON.stringify(data).slice(0, 300)}`);
-  const event = data.event;
-  const name = event.name || 'Event';
-  const date = event.start_at
-    ? new Date(event.start_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
-    : 'See event page';
-  const time = event.start_at
-    ? new Date(event.start_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    : '';
-  const location = event.location_summary || (event.geo_address_info && event.geo_address_info.full_address) || 'See event page';
-  const description = event.description || '';
-  return { name, date, time, location, description };
+
+  try {
+    const { data } = await axios.get(`https://api.lu.ma/public/v1/event/get?url_slug=${slug}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+    });
+    const event = data.event;
+    const name = event.name || 'Event';
+    const date = event.start_at
+      ? new Date(event.start_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+      : 'See event page';
+    const time = event.start_at
+      ? new Date(event.start_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      : '';
+    const location = event.location_summary || (event.geo_address_info && event.geo_address_info.full_address) || 'See event page';
+    const description = event.description || '';
+    return { name, date, time, location, description };
+  } catch (e) {
+    console.log(`Luma API failed (${e.message}), falling back to scrape`);
+    const { data } = await axios.get(url.replace(/,+$/, ''), {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    const $ = cheerio.load(data);
+    const name =
+      $('meta[property="og:title"]').attr('content') ||
+      $('h1').first().text().trim() ||
+      'Event';
+    const date =
+      $('meta[property="event:start_time"]').attr('content') ||
+      $('[class*="date"], [class*="time"]').first().text().trim() ||
+      'See event page';
+    const location =
+      $('meta[property="og:description"]').attr('content') ||
+      $('[class*="location"]').first().text().trim() ||
+      'See event page';
+    const description =
+      $('meta[name="description"]').attr('content') || '';
+    return { name, date, time: '', location, description };
+  }
 }
 
 async function scrapePartiful(url) {
@@ -171,7 +194,6 @@ app.post('/webhook/inbound', async (req, res) => {
   const fromNumber = req.body.From || '';
 
   console.log(`Received WhatsApp message from ${fromNumber}: ${incomingMsg}`);
-  console.log(`Raw body: ${JSON.stringify(req.body)}`);
 
   const url = extractURL(incomingMsg);
   const site = url ? detectSite(url) : null;
@@ -179,11 +201,6 @@ app.post('/webhook/inbound', async (req, res) => {
   console.log(`Extracted URL: ${url}, Site: ${site}`);
 
   if (!url || !site) {
-    await twilioClient.messages.create({
-      body: `👋 Send me a Luma, Partiful, or Eventbrite event link and I'll add it to your Apple Wallet!`,
-      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-      to: fromNumber
-    });
     res.sendStatus(200);
     return;
   }

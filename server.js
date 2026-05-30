@@ -14,32 +14,20 @@ const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 
 const userState = {};
 
-// ─── Telegram helpers ────────────────────────────────────────────────────────
-
 async function sendMessage(chatId, text) {
-  await axios.post(`${TELEGRAM_API}/sendMessage`, {
-    chat_id: chatId,
-    text: text
-  });
+  await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: text });
 }
 
 async function sendInlineKeyboard(chatId, text, buttons) {
   await axios.post(`${TELEGRAM_API}/sendMessage`, {
-    chat_id: chatId,
-    text: text,
-    reply_markup: {
-      inline_keyboard: buttons
-    }
+    chat_id: chatId, text: text,
+    reply_markup: { inline_keyboard: buttons }
   });
 }
 
 async function answerCallbackQuery(callbackQueryId) {
-  await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
-    callback_query_id: callbackQueryId
-  });
+  await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQueryId });
 }
-
-// ─── Cleanup ─────────────────────────────────────────────────────────────────
 
 function cleanupOldPasses() {
   const tmpDir = '/tmp';
@@ -56,8 +44,6 @@ function cleanupOldPasses() {
 }
 setInterval(cleanupOldPasses, 60 * 60 * 1000);
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
 const SCRAPE_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -69,8 +55,6 @@ const SCRAPE_HEADERS = {
 const MOVIE_SITES = ['amc', 'cinemark'];
 const CONCERT_SITES = ['luma', 'eventbrite', 'dice', 'fever'];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 function detectSite(url) {
   if (url.includes('lu.ma') || url.includes('luma.com')) return 'luma';
   if (url.includes('eventbrite.com')) return 'eventbrite';
@@ -78,13 +62,10 @@ function detectSite(url) {
   if (url.includes('feverup.com') || url.includes('fever.com')) return 'fever';
   if (url.includes('amctheatres.com')) return 'amc';
   if (url.includes('cinemark.com')) return 'cinemark';
-
   return null;
 }
 
-function isMovieSite(site) {
-  return MOVIE_SITES.includes(site);
-}
+function isMovieSite(site) { return MOVIE_SITES.includes(site); }
 
 function extractURLs(text) {
   const matches = text.match(/https?:\/\/[^\s,]+/g);
@@ -93,60 +74,40 @@ function extractURLs(text) {
 }
 
 function colorForSite(site) {
-  const map = {
-    luma: 'blue',
-    eventbrite: 'dark',
-    dice: 'purple',
-    fever: 'dark',
-    amc: 'red',
-    cinemark: 'red'
-  };
+  const map = { luma: 'blue', eventbrite: 'dark', dice: 'purple', fever: 'dark', amc: 'red', cinemark: 'red' };
   return map[site] || 'dark';
 }
 
-// safeVal: ensures NO empty strings ever reach WalletWallet
 function safeVal(val, fallback = 'N/A') {
   if (val === null || val === undefined) return fallback;
   const str = String(val).trim();
   return str.length > 0 ? str : fallback;
 }
 
-// ─── Realistic generators ────────────────────────────────────────────────────
-
 function generateTicketNumber(site) {
-  const prefix = {
-    amc: 'AMC', cinemark: 'CNM',
-    luma: 'LMA', eventbrite: 'EVT', dice: 'DCE', fever: 'FVR'
-  }[site] || 'TKT';
+  const prefix = { amc: 'AMC', cinemark: 'CNM', luma: 'LMA', eventbrite: 'EVT', dice: 'DCE', fever: 'FVR' }[site] || 'TKT';
   const num = Math.floor(Math.random() * 90000) + 10000;
   const suffix = Math.random().toString(36).toUpperCase().slice(2, 4);
   return `${prefix}-${num}-${suffix}`;
-}
-
-function generateAuditorium() {
-  return 'AUDITORIUM ' + String(Math.floor(Math.random() * 20) + 1);
 }
 
 function generateMovieSeat() {
   const audNum = Math.floor(Math.random() * 20) + 1;
   const row = ['A','B','C','D','E','F','G','H','J','K'][Math.floor(Math.random() * 10)];
   const seat = Math.floor(Math.random() * 20) + 1;
-  return {
-    auditorium: `AUDITORIUM ${audNum}`,
-    row,
-    seat: String(seat)
-  };
+  return { auditorium: `AUDITORIUM ${audNum}`, row, seat: String(seat) };
 }
 
 function generateEventSeat() {
   const sections = ['GA', 'FLOOR', 'PIT', 'SEC 100', 'SEC 200', 'VIP', 'BALCONY', 'MEZZANINE'];
   const gates = ['GATE A', 'GATE B', 'GATE C', 'MAIN ENTRANCE', 'NORTH GATE', 'SOUTH GATE'];
   const rows = ['A','B','C','D','E','F','G','H','J','K','L','M'];
-  const section = sections[Math.floor(Math.random() * sections.length)];
-  const gate = gates[Math.floor(Math.random() * gates.length)];
-  const row = rows[Math.floor(Math.random() * rows.length)];
-  const seat = String(Math.floor(Math.random() * 30) + 1);
-  return { section, gate, row, seat };
+  return {
+    section: sections[Math.floor(Math.random() * sections.length)],
+    gate: gates[Math.floor(Math.random() * gates.length)],
+    row: rows[Math.floor(Math.random() * rows.length)],
+    seat: String(Math.floor(Math.random() * 30) + 1)
+  };
 }
 
 function getExpirationDate(eventDateStr) {
@@ -160,16 +121,13 @@ function getExpirationDate(eventDateStr) {
   return null;
 }
 
-// ─── Name cleaner ─────────────────────────────────────────────────────────────
-
 function cleanName(name) {
   if (!name) return 'Event';
   return name
     .replace(/\s*[\|·—]\s*(Partiful|Luma|Dice|Eventbrite|Fever|AMC|Cinemark).*$/i, '')
     .replace(/\s*[Tt]ickets.*$/, '')
     .replace(/\s*[-–]\s*Buy.*$/i, '')
-    .trim()
-    .slice(0, 100);
+    .trim().slice(0, 100);
 }
 
 // ─── Scrapers ─────────────────────────────────────────────────────────────────
@@ -182,12 +140,8 @@ async function scrapeLuma(url) {
     });
     const event = data.event;
     const name = cleanName(event.name);
-    const date = event.start_at
-      ? new Date(event.start_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
-      : 'See event page';
-    const time = event.start_at
-      ? new Date(event.start_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-      : 'See event page';
+    const date = event.start_at ? new Date(event.start_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'See event page';
+    const time = event.start_at ? new Date(event.start_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'See event page';
     const location = (event.location_summary || (event.geo_address_info && event.geo_address_info.full_address) || 'See event page').slice(0, 100);
     const description = (event.description || 'N/A').slice(0, 200);
     const rawDate = event.start_at || null;
@@ -302,9 +256,7 @@ async function scrapeAMC(url) {
   let name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim();
   if (!name || name.toLowerCase().includes('amc theatres') || name.toLowerCase() === 'amc') {
     const urlMatch = url.match(/\/movies\/([^\/\?]+)/i);
-    if (urlMatch) {
-      name = urlMatch[1].replace(/-\d+$/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    }
+    if (urlMatch) name = urlMatch[1].replace(/-\d+$/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   }
   name = cleanName(name || 'Movie');
   let date = 'See movie page', time = 'See movie page', location = 'AMC Theatres', rating = '', runtime = '', rawDate = null;
@@ -343,9 +295,7 @@ async function scrapeCinemark(url) {
   let name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim();
   if (!name || name.toLowerCase().includes('cinemark')) {
     const urlMatch = url.match(/\/movies\/([^\/\?]+)/i);
-    if (urlMatch) {
-      name = urlMatch[1].replace(/-\d+$/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    }
+    if (urlMatch) name = urlMatch[1].replace(/-\d+$/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   }
   name = cleanName(name || 'Movie');
   let date = 'See movie page', time = 'See movie page', location = 'Cinemark', rating = '', runtime = '', rawDate = null;
@@ -381,10 +331,7 @@ async function scrapeCinemark(url) {
 async function scrapeByUrl(url) {
   const site = detectSite(url);
   if (!site) return null;
-  const scrapers = {
-    luma: scrapeLuma, eventbrite: scrapeEventbrite, dice: scrapeDice, fever: scrapeFever,
-    amc: scrapeAMC, cinemark: scrapeCinemark
-  };
+  const scrapers = { luma: scrapeLuma, eventbrite: scrapeEventbrite, dice: scrapeDice, fever: scrapeFever, amc: scrapeAMC, cinemark: scrapeCinemark };
   const scraper = scrapers[site];
   if (!scraper) return null;
   const eventData = await scraper(url);
@@ -393,20 +340,34 @@ async function scrapeByUrl(url) {
 
 // ─── Pass generator ───────────────────────────────────────────────────────────
 
+function validatePayload(payload) {
+  const fieldGroups = ['headerFields', 'primaryFields', 'secondaryFields', 'auxiliaryFields', 'backFields'];
+  for (const group of fieldGroups) {
+    if (!payload[group]) continue;
+    if (payload[group].length > 10) throw new Error(`${group} has ${payload[group].length} items — max is 10`);
+    for (const field of payload[group]) {
+      if (!field.label || !field.label.trim()) throw new Error(`Empty label in ${group}`);
+      if (!field.value || !field.value.trim()) throw new Error(`Empty value for label "${field.label}" in ${group}`);
+    }
+  }
+  const topLevel = ['barcodeValue', 'logoText', 'description', 'organizationName', 'colorPreset'];
+  for (const key of topLevel) {
+    if (!payload[key] || !String(payload[key]).trim()) throw new Error(`Empty top-level field: ${key}`);
+  }
+}
+
 async function generatePass(eventData, eventUrl, site, passholder = null) {
   const isMovie = isMovieSite(site);
   const color = colorForSite(site);
   const ticketNumber = generateTicketNumber(site);
   const passholderVal = safeVal(passholder ? passholder.toUpperCase() : null, 'N/A');
-
-  // Generate seat details
   const movieSeat = generateMovieSeat();
   const eventSeat = generateEventSeat();
-
-  // Pass expiry: event date + 1 day
   const expirationDate = getExpirationDate(eventData.rawDate);
 
-  // Build payload — every single value goes through safeVal
+  // KEY FIX: auxiliaryFields is unreliable in WalletWallet — put ALL visible info
+  // into secondaryFields (row 1) and auxiliaryFields (row 2), keeping each ≤ 4 fields.
+  // If auxiliaryFields still doesn't render, secondaryFields has the critical info.
   const passPayload = {
     barcodeValue: safeVal(eventUrl, 'https://keypass.app'),
     barcodeFormat: 'QR',
@@ -421,30 +382,31 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
     primaryFields: [
       { label: isMovie ? 'FILM' : 'EVENT', value: safeVal(eventData.name, 'Event') }
     ],
+    // Row 1: seat info + TIME (so time always shows even if aux doesn't render)
     secondaryFields: isMovie
       ? [
           { label: 'AUDITORIUM', value: safeVal(movieSeat.auditorium) },
           { label: 'ROW', value: safeVal(movieSeat.row) },
-          { label: 'SEAT', value: safeVal(movieSeat.seat) }
+          { label: 'SEAT', value: safeVal(movieSeat.seat) },
+          { label: 'TIME', value: safeVal(eventData.time, 'See page') }
         ]
       : [
           { label: 'SECTION', value: safeVal(eventSeat.section) },
-          { label: 'GATE', value: safeVal(eventSeat.gate) },
-          { label: 'TICKET', value: safeVal(ticketNumber) }
+          { label: 'ROW', value: safeVal(eventSeat.row) },
+          { label: 'SEAT', value: safeVal(eventSeat.seat) },
+          { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') }
         ],
+    // Row 2: ticket number + location details
     auxiliaryFields: isMovie
       ? [
           { label: 'TICKET', value: safeVal(ticketNumber) },
-          { label: 'TIME', value: safeVal(eventData.time, 'See page') },
           { label: 'THEATER', value: safeVal(eventData.location, 'See page') }
         ]
       : [
-          { label: 'ROW', value: safeVal(eventSeat.row) },
-          { label: 'SEAT', value: safeVal(eventSeat.seat) },
-          { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') },
+          { label: 'TICKET', value: safeVal(ticketNumber) },
+          { label: 'GATE', value: safeVal(eventSeat.gate) },
           { label: 'VENUE', value: safeVal(eventData.location, 'See page') }
         ],
-    // Strictly 10 backFields — no conditionals that can push over
     backFields: isMovie
       ? [
           { label: 'TICKET NUMBER', value: safeVal(ticketNumber) },
@@ -472,12 +434,8 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
         ]
   };
 
-  // Only add expirationDate if we actually have a valid one
-  if (expirationDate) {
-    passPayload.expirationDate = expirationDate;
-  }
+  if (expirationDate) passPayload.expirationDate = expirationDate;
 
-  // Validate payload before sending — catch issues before they hit the API
   validatePayload(passPayload);
 
   let response;
@@ -506,35 +464,9 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
   const fileName = `pass_${Date.now()}.pkpass`;
   const filePath = path.join('/tmp', fileName);
   fs.writeFileSync(filePath, response.data);
-
   const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
 
-  return {
-    passUrl: `${baseUrl}/passes/${fileName}`,
-    ticketNumber,
-    movieSeat,
-    eventSeat,
-    isMovie
-  };
-}
-
-// Pre-flight payload validator — catches empty values before they reach WalletWallet
-function validatePayload(payload) {
-  const fieldGroups = ['headerFields', 'primaryFields', 'secondaryFields', 'auxiliaryFields', 'backFields'];
-  for (const group of fieldGroups) {
-    if (!payload[group]) continue;
-    if (payload[group].length > 10) {
-      throw new Error(`${group} has ${payload[group].length} items — max is 10`);
-    }
-    for (const field of payload[group]) {
-      if (!field.label || !field.label.trim()) throw new Error(`Empty label in ${group}`);
-      if (!field.value || !field.value.trim()) throw new Error(`Empty value for label "${field.label}" in ${group}`);
-    }
-  }
-  const topLevel = ['barcodeValue', 'logoText', 'description', 'organizationName', 'colorPreset'];
-  for (const key of topLevel) {
-    if (!payload[key] || !String(payload[key]).trim()) throw new Error(`Empty top-level field: ${key}`);
-  }
+  return { passUrl: `${baseUrl}/passes/${fileName}`, ticketNumber, movieSeat, eventSeat, isMovie };
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -555,13 +487,11 @@ app.get('/passes/:filename', (req, res) => {
 app.post('/webhook/inbound', async (req, res) => {
   res.sendStatus(200);
 
-  // Handle inline keyboard button presses
   if (req.body.callback_query) {
     const cb = req.body.callback_query;
     const chatId = cb.message.chat.id;
     const data = cb.data;
     await answerCallbackQuery(cb.id);
-
     if (data === 'type_movie' || data === 'type_concert') {
       const type = data === 'type_movie' ? 'movie' : 'concert';
       userState[chatId] = { ...userState[chatId], selectedType: type, waitingForUrl: true };
@@ -578,98 +508,68 @@ app.post('/webhook/inbound', async (req, res) => {
 
   const chatId = message.chat.id;
   const incomingMsg = message.text.trim();
-
   console.log(`[${chatId}] ${incomingMsg}`);
 
-  // ── Commands ──
   if (incomingMsg === '/start' || incomingMsg === '/new') {
     userState[chatId] = {};
     await sendInlineKeyboard(
       chatId,
       `🎟️ Welcome to Keypass!\n\nWhat kind of pass do you need?\n\n🎬 MOVIES\nAMC · Cinemark\n\n🎤 CONCERTS & EVENTS\nFever Up · lu.ma · Eventbrite · Dice`,
-      [
-        [
-          { text: '🎬 Movie', callback_data: 'type_movie' },
-          { text: '🎤 Concert / Event', callback_data: 'type_concert' }
-        ]
-      ]
+      [[{ text: '🎬 Movie', callback_data: 'type_movie' }, { text: '🎤 Concert / Event', callback_data: 'type_concert' }]]
     );
     return;
   }
 
   if (incomingMsg === '/last') {
     const last = userState[chatId]?.lastPassUrl;
-    if (last) {
-      await sendMessage(chatId, `🎟️ Your last pass:\n${last}`);
-    } else {
-      await sendMessage(chatId, `No pass generated yet. Send /start to begin.`);
-    }
+    await sendMessage(chatId, last ? `🎟️ Your last pass:\n${last}` : `No pass generated yet. Send /start to begin.`);
     return;
   }
 
   if (incomingMsg === '/help') {
     await sendMessage(chatId,
-      `🎟️ Keypass Bot\n\n` +
-      `🎬 Movie sites:\n• amctheatres.com\n• cinemark.com\n\n` +
-      `🎤 Concert / Event sites:\n• lu.ma\n• eventbrite.com\n• dice.fm\n• feverup.com\n\n` +
-      `Commands:\n/start — new pass\n/last — resend last pass\n/help — this message`
+      `🎟️ Keypass Bot\n\n🎬 Movie sites:\n• amctheatres.com\n• cinemark.com\n\n🎤 Concert / Event sites:\n• lu.ma\n• eventbrite.com\n• dice.fm\n• feverup.com\n\nCommands:\n/start — new pass\n/last — resend last pass\n/help — this message`
     );
     return;
   }
 
-  // ── If no type selected yet, show the menu ──
   if (!userState[chatId]?.selectedType) {
     userState[chatId] = {};
     await sendInlineKeyboard(
       chatId,
       `What kind of pass do you need?\n\n🎬 MOVIES\nAMC · Cinemark\n\n🎤 CONCERTS & EVENTS\nFever Up · lu.ma · Eventbrite · Dice`,
-      [
-        [
-          { text: '🎬 Movie', callback_data: 'type_movie' },
-          { text: '🎤 Concert / Event', callback_data: 'type_concert' }
-        ]
-      ]
+      [[{ text: '🎬 Movie', callback_data: 'type_movie' }, { text: '🎤 Concert / Event', callback_data: 'type_concert' }]]
     );
     return;
   }
 
-  // ── Waiting for time ──
   if (userState[chatId]?.waitingForTime) {
     const customTime = incomingMsg.toLowerCase() === 'skip' ? null : incomingMsg;
     const pending = userState[chatId].pendingPasses;
-
     if (customTime) {
-      for (const p of pending) {
-        p.eventData.time = customTime;
-      }
+      for (const p of pending) p.eventData.time = customTime;
     }
-
     userState[chatId].waitingForTime = false;
     userState[chatId].waitingForName = true;
     userState[chatId].pendingPasses = pending;
-
     await sendMessage(chatId, `What name should go on the pass?\nReply with a name or type "skip"`);
     return;
   }
 
-  // ── Waiting for name ──
   if (userState[chatId]?.waitingForName) {
     const name = incomingMsg.toLowerCase() === 'skip' ? null : incomingMsg;
     const pending = userState[chatId].pendingPasses;
     userState[chatId].waitingForName = false;
     userState[chatId].pendingPasses = null;
-
     await sendMessage(chatId, `Generating ${pending.length} pass${pending.length > 1 ? 'es' : ''}... 🎟️`);
 
     for (const { eventData, url, site } of pending) {
       try {
         const { passUrl, ticketNumber, movieSeat, eventSeat, isMovie } = await generatePass(eventData, url, site, name);
         userState[chatId].lastPassUrl = passUrl;
-
         const details = isMovie
           ? `${movieSeat.auditorium} · ROW ${movieSeat.row} · SEAT ${movieSeat.seat} · ${ticketNumber}`
           : `${eventSeat.section} · ROW ${eventSeat.row} · SEAT ${eventSeat.seat} · ${eventSeat.gate} · ${ticketNumber}`;
-
         await sendMessage(chatId, `✅ ${eventData.name}\n${details}\n\nTap to add to Apple Wallet:\n${passUrl}`);
       } catch (err) {
         console.error(err);
@@ -677,13 +577,11 @@ app.post('/webhook/inbound', async (req, res) => {
       }
     }
 
-    // Reset type so next /start or message shows the menu again
     userState[chatId].selectedType = null;
     userState[chatId].waitingForUrl = false;
     return;
   }
 
-  // ── Waiting for URL ──
   if (userState[chatId]?.waitingForUrl) {
     const urls = extractURLs(incomingMsg);
     const validUrls = urls.filter(u => detectSite(u));
@@ -693,7 +591,6 @@ app.post('/webhook/inbound', async (req, res) => {
       return;
     }
 
-    // Validate URL matches the selected type
     const selectedType = userState[chatId].selectedType;
     const wrongType = validUrls.filter(u => {
       const site = detectSite(u);
@@ -735,7 +632,6 @@ app.post('/webhook/inbound', async (req, res) => {
       }
       preview += `\n`;
     }
-
     await sendMessage(chatId, preview.trim());
 
     const scrapedTime = results[0]?.eventData?.time;

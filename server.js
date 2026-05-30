@@ -30,7 +30,6 @@ function detectSite(url) {
   if (url.includes('partiful.com')) return 'partiful';
   if (url.includes('eventbrite.com')) return 'eventbrite';
   if (url.includes('dice.fm')) return 'dice';
-  if (url.includes('ticketmaster.com')) return 'ticketmaster';
   if (url.includes('ra.co')) return 'ra';
   return null;
 }
@@ -72,7 +71,7 @@ async function scrapeLuma(url) {
     const location = event.location_summary || (event.geo_address_info && event.geo_address_info.full_address) || 'See event page';
     const description = event.description || '';
     const image = event.cover_url || event.thumbnail_url || null;
-    console.log(`Luma image URL: ${image}`);
+    console.log(`Luma image: ${image}`);
     return { name, date, time, location, description, image };
   } catch (e) {
     console.log(`Luma API failed (${e.message}), falling back to scrape`);
@@ -80,7 +79,7 @@ async function scrapeLuma(url) {
     const $ = cheerio.load(data);
     const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
     const image = $('meta[property="og:image"]').attr('content') || null;
-    console.log(`Luma fallback image URL: ${image}`);
+    console.log(`Luma fallback image: ${image}`);
     let date = 'See event page';
     let time = '';
     $('script[type="application/ld+json"]').each((_, el) => {
@@ -107,7 +106,7 @@ async function scrapePartiful(url) {
   const location = $('meta[property="event:location"]').attr('content') || 'See invite';
   const description = $('meta[property="og:description"]').attr('content') || '';
   const image = $('meta[property="og:image"]').attr('content') || null;
-  console.log(`Partiful image URL: ${image}`);
+  console.log(`Partiful image: ${image}`);
   return { name, date, time: '', location, description, image };
 }
 
@@ -116,7 +115,7 @@ async function scrapeEventbrite(url) {
   const $ = cheerio.load(data);
   const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
   const image = $('meta[property="og:image"]').attr('content') || null;
-  console.log(`Eventbrite image URL: ${image}`);
+  console.log(`Eventbrite image: ${image}`);
   let date = '', time = '', location = '';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -142,7 +141,7 @@ async function scrapeDice(url) {
   const $ = cheerio.load(data);
   const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
   const image = $('meta[property="og:image"]').attr('content') || null;
-  console.log(`Dice image URL: ${image}`);
+  console.log(`Dice image: ${image}`);
   let date = '', time = '', location = '';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -163,38 +162,12 @@ async function scrapeDice(url) {
   return { name, date, time, location, description, image };
 }
 
-async function scrapeTicketmaster(url) {
-  const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
-  const $ = cheerio.load(data);
-  const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
-  const image = $('meta[property="og:image"]').attr('content') || null;
-  console.log(`Ticketmaster image URL: ${image}`);
-  let date = '', time = '', location = '';
-  $('script[type="application/ld+json"]').each((_, el) => {
-    try {
-      const json = JSON.parse($(el).html());
-      if (json['@type'] === 'MusicEvent' || json['@type'] === 'Event') {
-        if (json.startDate) {
-          const d = new Date(json.startDate);
-          date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-          time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        }
-        location = (json.location && json.location.name) || (json.location && json.location.address && json.location.address.streetAddress) || '';
-      }
-    } catch (e) {}
-  });
-  if (!date) date = 'See event page';
-  if (!location) location = 'See event page';
-  const description = $('meta[property="og:description"]').attr('content') || '';
-  return { name, date, time, location, description, image };
-}
-
 async function scrapeRA(url) {
   const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
   const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
   const image = $('meta[property="og:image"]').attr('content') || null;
-  console.log(`RA image URL: ${image}`);
+  console.log(`RA image: ${image}`);
   let date = '', time = '', location = '';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -254,8 +227,9 @@ async function generatePass(eventData, eventUrl) {
   if (eventData.image) {
     console.log(`Adding image to pass: ${eventData.image}`);
     passPayload.stripImageUrl = eventData.image;
-    passPayload.thumbnailImageUrl = eventData.image;
-    passPayload.logoImageUrl = eventData.image;
+    passPayload.thumbnailUrl = eventData.image;
+    passPayload.logoUrl = eventData.image;
+    passPayload.iconUrl = eventData.image;
   }
 
   console.log(`Pass payload: ${JSON.stringify(passPayload).slice(0, 500)}`);
@@ -320,7 +294,6 @@ app.post('/webhook/inbound', async (req, res) => {
     if (site === 'partiful') eventData = await scrapePartiful(url);
     if (site === 'eventbrite') eventData = await scrapeEventbrite(url);
     if (site === 'dice') eventData = await scrapeDice(url);
-    if (site === 'ticketmaster') eventData = await scrapeTicketmaster(url);
     if (site === 'ra') eventData = await scrapeRA(url);
 
     const passUrl = await generatePass(eventData, url);

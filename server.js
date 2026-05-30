@@ -17,12 +17,20 @@ async function sendMessage(chatId, text) {
   });
 }
 
+const SCRAPE_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.5',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Connection': 'keep-alive'
+};
+
 function detectSite(url) {
   if (url.includes('lu.ma') || url.includes('luma.com')) return 'luma';
   if (url.includes('partiful.com')) return 'partiful';
   if (url.includes('eventbrite.com')) return 'eventbrite';
   if (url.includes('dice.fm')) return 'dice';
-  if (url.includes('songkick.com')) return 'songkick';
+  if (url.includes('ticketmaster.com')) return 'ticketmaster';
   if (url.includes('ra.co')) return 'ra';
   return null;
 }
@@ -45,14 +53,6 @@ function generateGate() {
   const gates = ['GATE 1', 'GATE 2', 'GATE 3', 'MAIN ENTRANCE', 'SIDE ENTRANCE'];
   return gates[Math.floor(Math.random() * gates.length)];
 }
-
-const SCRAPE_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.5',
-  'Accept-Encoding': 'gzip, deflate, br',
-  'Connection': 'keep-alive'
-};
 
 async function scrapeLuma(url) {
   const slug = url.replace(/\?.*$/, '').replace(/,+$/, '').split('/').pop();
@@ -163,12 +163,12 @@ async function scrapeDice(url) {
   return { name, date, time, location, description, image };
 }
 
-async function scrapeSongkick(url) {
+async function scrapeTicketmaster(url) {
   const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
-  const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Concert';
+  const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
   const image = $('meta[property="og:image"]').attr('content') || null;
-  console.log(`Songkick image URL: ${image}`);
+  console.log(`Ticketmaster image URL: ${image}`);
   let date = '', time = '', location = '';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -179,13 +179,13 @@ async function scrapeSongkick(url) {
           date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
           time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         }
-        location = (json.location && json.location.name) || '';
+        location = (json.location && json.location.name) || (json.location && json.location.address && json.location.address.streetAddress) || '';
       }
     } catch (e) {}
   });
   if (!date) date = 'See event page';
   if (!location) location = 'See event page';
-  const description = $('meta[name="description"]').attr('content') || '';
+  const description = $('meta[property="og:description"]').attr('content') || '';
   return { name, date, time, location, description, image };
 }
 
@@ -320,7 +320,7 @@ app.post('/webhook/inbound', async (req, res) => {
     if (site === 'partiful') eventData = await scrapePartiful(url);
     if (site === 'eventbrite') eventData = await scrapeEventbrite(url);
     if (site === 'dice') eventData = await scrapeDice(url);
-    if (site === 'songkick') eventData = await scrapeSongkick(url);
+    if (site === 'ticketmaster') eventData = await scrapeTicketmaster(url);
     if (site === 'ra') eventData = await scrapeRA(url);
 
     const passUrl = await generatePass(eventData, url);

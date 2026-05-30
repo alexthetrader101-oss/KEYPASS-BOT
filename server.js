@@ -173,20 +173,20 @@ async function generatePass(eventData, eventUrl) {
     organizationName: 'Keypass',
     colorPreset: 'dark',
     headerFields: [
-      { label: 'TICKET', value: ticketNumber }
+      { label: 'DATE', value: eventData.date }
     ],
     primaryFields: [
+      { label: 'EVENT', value: eventData.name }
+    ],
+    secondaryFields: [
       { label: 'SECTION', value: section },
       { label: 'ROW', value: row },
       { label: 'SEAT', value: seat }
     ],
-    secondaryFields: [
-      { label: 'EVENT', value: eventData.name }
-    ],
     auxiliaryFields: [
-      { label: 'DATE', value: eventData.date },
       { label: 'TIME', value: eventData.time || 'Doors Open' },
-      { label: 'GATE', value: gate }
+      { label: 'GATE', value: gate },
+      { label: 'TICKET', value: ticketNumber }
     ],
     backFields: [
       { label: 'TICKET NUMBER', value: ticketNumber },

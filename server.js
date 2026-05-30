@@ -17,6 +17,9 @@ function detectSite(url) {
   if (url.includes('lu.ma') || url.includes('luma.com')) return 'luma';
   if (url.includes('partiful.com')) return 'partiful';
   if (url.includes('eventbrite.com')) return 'eventbrite';
+  if (url.includes('dice.fm')) return 'dice';
+  if (url.includes('songkick.com')) return 'songkick';
+  if (url.includes('ra.co')) return 'ra';
   return null;
 }
 
@@ -54,17 +57,30 @@ async function scrapeLuma(url) {
       $('meta[property="og:title"]').attr('content') ||
       $('h1').first().text().trim() ||
       'Event';
-    const date =
-      $('meta[property="event:start_time"]').attr('content') ||
-      $('[class*="date"], [class*="time"]').first().text().trim() ||
-      'See event page';
+    // Try to get time from JSON-LD
+    let date = 'See event page';
+    let time = '';
+    $('script[type="application/ld+json"]').each((_, el) => {
+      try {
+        const json = JSON.parse($(el).html());
+        if (json['@type'] === 'Event' && json.startDate) {
+          const d = new Date(json.startDate);
+          date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+          time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
+      } catch (err) {}
+    });
+    if (date === 'See event page') {
+      date = $('meta[property="event:start_time"]').attr('content') ||
+        $('[class*="date"], [class*="time"]').first().text().trim() ||
+        'See event page';
+    }
     const location =
-      $('meta[property="og:description"]').attr('content') ||
+      $('meta[property="event:location"]').attr('content') ||
       $('[class*="location"]').first().text().trim() ||
       'See event page';
-    const description =
-      $('meta[name="description"]').attr('content') || '';
-    return { name, date, time: '', location, description };
+    const description = $('meta[name="description"]').attr('content') || '';
+    return { name, date, time, location, description };
   }
 }
 
@@ -126,6 +142,108 @@ async function scrapeEventbrite(url) {
     $('meta[property="og:description"]').attr('content') ||
     $('meta[name="description"]').attr('content') ||
     '';
+  return { name, date, time, location, description };
+}
+
+async function scrapeDice(url) {
+  const { data } = await axios.get(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0' }
+  });
+  const $ = cheerio.load(data);
+  const name =
+    $('meta[property="og:title"]').attr('content') ||
+    $('h1').first().text().trim() ||
+    'Event';
+  let date = '';
+  let time = '';
+  let location = '';
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const json = JSON.parse($(el).html());
+      if (json['@type'] === 'Event') {
+        if (json.startDate) {
+          const d = new Date(json.startDate);
+          date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+          time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
+        location =
+          (json.location && json.location.name) ||
+          (json.location && json.location.address && json.location.address.streetAddress) ||
+          '';
+      }
+    } catch (e) {}
+  });
+  if (!date) date = $('meta[property="event:start_time"]').attr('content') || 'See event page';
+  if (!location) location = $('meta[property="og:description"]').attr('content') || 'See event page';
+  const description = $('meta[name="description"]').attr('content') || '';
+  return { name, date, time, location, description };
+}
+
+async function scrapeSongkick(url) {
+  const { data } = await axios.get(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0' }
+  });
+  const $ = cheerio.load(data);
+  const name =
+    $('meta[property="og:title"]').attr('content') ||
+    $('h1').first().text().trim() ||
+    'Concert';
+  let date = '';
+  let time = '';
+  let location = '';
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const json = JSON.parse($(el).html());
+      if (json['@type'] === 'MusicEvent' || json['@type'] === 'Event') {
+        if (json.startDate) {
+          const d = new Date(json.startDate);
+          date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+          time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
+        location =
+          (json.location && json.location.name) ||
+          (json.location && json.location.address && json.location.address.streetAddress) ||
+          '';
+      }
+    } catch (e) {}
+  });
+  if (!date) date = $('[class*="date"], [itemprop="startDate"]').first().text().trim() || 'See event page';
+  if (!location) location = $('[class*="venue"], [itemprop="location"]').first().text().trim() || 'See event page';
+  const description = $('meta[name="description"]').attr('content') || '';
+  return { name, date, time, location, description };
+}
+
+async function scrapeRA(url) {
+  const { data } = await axios.get(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0' }
+  });
+  const $ = cheerio.load(data);
+  const name =
+    $('meta[property="og:title"]').attr('content') ||
+    $('h1').first().text().trim() ||
+    'Event';
+  let date = '';
+  let time = '';
+  let location = '';
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const json = JSON.parse($(el).html());
+      if (json['@type'] === 'DanceEvent' || json['@type'] === 'Event') {
+        if (json.startDate) {
+          const d = new Date(json.startDate);
+          date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+          time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
+        location =
+          (json.location && json.location.name) ||
+          (json.location && json.location.address && json.location.address.streetAddress) ||
+          '';
+      }
+    } catch (e) {}
+  });
+  if (!date) date = $('meta[property="event:start_time"]').attr('content') || 'See event page';
+  if (!location) location = $('[class*="venue"], [class*="location"]').first().text().trim() || 'See event page';
+  const description = $('meta[name="description"]').attr('content') || '';
   return { name, date, time, location, description };
 }
 
@@ -216,6 +334,9 @@ app.post('/webhook/inbound', async (req, res) => {
     if (site === 'luma') eventData = await scrapeLuma(url);
     if (site === 'partiful') eventData = await scrapePartiful(url);
     if (site === 'eventbrite') eventData = await scrapeEventbrite(url);
+    if (site === 'dice') eventData = await scrapeDice(url);
+    if (site === 'songkick') eventData = await scrapeSongkick(url);
+    if (site === 'ra') eventData = await scrapeRA(url);
 
     const passUrl = await generatePass(eventData, url);
 

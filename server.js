@@ -369,7 +369,9 @@ async function generatePass(eventData, eventUrl, site, passholder = null, seatTy
   const passPayload = {
     barcodeValue: safeVal(eventUrl, 'https://keypass.app'),
     barcodeFormat: 'QR',
-    logoText: 'KEYPASS',
+    logoText: isMovie
+      ? (site === 'amc' ? 'KEYPASS · AMC' : 'KEYPASS · CINEMARK')
+      : 'KEYPASS',
     description: safeVal(eventData.name, 'Event'),
     organizationName: 'Keypass',
     colorPreset: color,

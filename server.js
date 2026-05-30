@@ -429,8 +429,8 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
         ]
       : [
           { label: 'SECTION', value: safeVal(eventSeat.section) },
-          { label: 'ROW', value: safeVal(eventSeat.row) },
-          { label: 'SEAT', value: safeVal(eventSeat.seat) }
+          { label: 'GATE', value: safeVal(eventSeat.gate) },
+          { label: 'TICKET', value: safeVal(ticketNumber) }
         ],
     auxiliaryFields: isMovie
       ? [
@@ -439,10 +439,10 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
           { label: 'THEATER', value: safeVal(eventData.location, 'See page') }
         ]
       : [
-          { label: 'TICKET', value: safeVal(ticketNumber) },
+          { label: 'ROW', value: safeVal(eventSeat.row) },
+          { label: 'SEAT', value: safeVal(eventSeat.seat) },
           { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') },
-          { label: 'GATE', value: safeVal(eventSeat.gate) },
-          { label: 'LOCATION', value: safeVal(eventData.location, 'See page') }
+          { label: 'VENUE', value: safeVal(eventData.location, 'See page') }
         ],
     // Strictly 10 backFields — no conditionals that can push over
     backFields: isMovie
@@ -633,6 +633,25 @@ app.post('/webhook/inbound', async (req, res) => {
     return;
   }
 
+  // ── Waiting for time ──
+  if (userState[chatId]?.waitingForTime) {
+    const customTime = incomingMsg.toLowerCase() === 'skip' ? null : incomingMsg;
+    const pending = userState[chatId].pendingPasses;
+
+    if (customTime) {
+      for (const p of pending) {
+        p.eventData.time = customTime;
+      }
+    }
+
+    userState[chatId].waitingForTime = false;
+    userState[chatId].waitingForName = true;
+    userState[chatId].pendingPasses = pending;
+
+    await sendMessage(chatId, `What name should go on the pass?\nReply with a name or type "skip"`);
+    return;
+  }
+
   // ── Waiting for name ──
   if (userState[chatId]?.waitingForName) {
     const name = incomingMsg.toLowerCase() === 'skip' ? null : incomingMsg;
@@ -717,10 +736,13 @@ app.post('/webhook/inbound', async (req, res) => {
       preview += `\n`;
     }
 
-    preview += `What name should go on the pass?\nReply with a name or type "skip"`;
-    await sendMessage(chatId, preview);
+    await sendMessage(chatId, preview.trim());
 
-    userState[chatId].waitingForName = true;
+    const scrapedTime = results[0]?.eventData?.time;
+    const timeKnown = scrapedTime && scrapedTime !== 'See event page' && scrapedTime !== 'See movie page';
+    await sendMessage(chatId, `⏰ What time should show on the pass?${timeKnown ? `\nScraped: ${scrapedTime} — reply with a new time or type "skip" to keep it` : `\nCouldn't find a time. Reply with a time (e.g. 8:00 PM) or type "skip"`}`);
+
+    userState[chatId].waitingForTime = true;
     userState[chatId].waitingForUrl = false;
     userState[chatId].pendingPasses = results;
     return;

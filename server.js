@@ -434,14 +434,15 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
         ],
     auxiliaryFields: isMovie
       ? [
+          { label: 'TICKET', value: safeVal(ticketNumber) },
           { label: 'TIME', value: safeVal(eventData.time, 'See page') },
-          { label: 'THEATER', value: safeVal(eventData.location, 'See page') },
-          { label: 'TICKET', value: safeVal(ticketNumber) }
+          { label: 'THEATER', value: safeVal(eventData.location, 'See page') }
         ]
       : [
+          { label: 'TICKET', value: safeVal(ticketNumber) },
           { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') },
           { label: 'GATE', value: safeVal(eventSeat.gate) },
-          { label: 'TICKET', value: safeVal(ticketNumber) }
+          { label: 'LOCATION', value: safeVal(eventData.location, 'See page') }
         ],
     // Strictly 10 backFields — no conditionals that can push over
     backFields: isMovie

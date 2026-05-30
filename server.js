@@ -84,12 +84,6 @@ function safeVal(val, fallback = 'N/A') {
   return str.length > 0 ? str : fallback;
 }
 
-function generateTicketNumber(site) {
-  const prefix = { amc: 'AMC', cinemark: 'CNM', luma: 'LMA', eventbrite: 'EVT', dice: 'DCE', fever: 'FVR' }[site] || 'TKT';
-  const num = Math.floor(Math.random() * 90000) + 10000;
-  const suffix = Math.random().toString(36).toUpperCase().slice(2, 4);
-  return `${prefix}-${num}-${suffix}`;
-}
 
 function generateMovieSeat() {
   const audNum = Math.floor(Math.random() * 20) + 1;
@@ -356,13 +350,17 @@ function validatePayload(payload) {
   }
 }
 
-async function generatePass(eventData, eventUrl, site, passholder = null) {
+async function generatePass(eventData, eventUrl, site, passholder = null, seatType = null) {
   const isMovie = isMovieSite(site);
   const color = colorForSite(site);
-  const ticketNumber = generateTicketNumber(site);
   const passholderVal = safeVal(passholder ? passholder.toUpperCase() : null, 'N/A');
   const movieSeat = generateMovieSeat();
   const eventSeat = generateEventSeat();
+  // Override section with user-chosen seat type if provided
+  if (seatType) {
+    if (isMovie) movieSeat.auditorium = seatType;
+    else eventSeat.section = seatType;
+  }
   const expirationDate = getExpirationDate(eventData.rawDate);
 
   // KEY FIX: auxiliaryFields is unreliable in WalletWallet — put ALL visible info
@@ -383,33 +381,30 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
       { label: isMovie ? 'FILM' : 'EVENT', value: safeVal(eventData.name, 'Event') }
     ],
     // Row 1: seat info + TIME (so time always shows even if aux doesn't render)
-    // 3 fields per row = larger text, easier to read from a distance
+    // 2 fields per row = large, easily readable text
     secondaryFields: isMovie
       ? [
           { label: 'AUDITORIUM', value: safeVal(movieSeat.auditorium) },
-          { label: 'ROW / SEAT', value: safeVal(movieSeat.row) + ' / ' + safeVal(movieSeat.seat) },
-          { label: 'TIME', value: safeVal(eventData.time, 'See page') }
+          { label: 'ROW / SEAT', value: safeVal(movieSeat.row) + ' / ' + safeVal(movieSeat.seat) }
         ]
       : [
           { label: 'SECTION', value: safeVal(eventSeat.section) },
-          { label: 'ROW / SEAT', value: safeVal(eventSeat.row) + ' / ' + safeVal(eventSeat.seat) },
-          { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') }
+          { label: 'ROW / SEAT', value: safeVal(eventSeat.row) + ' / ' + safeVal(eventSeat.seat) }
         ],
     auxiliaryFields: isMovie
       ? [
-          { label: 'TICKET', value: safeVal(ticketNumber) },
+          { label: 'TIME', value: safeVal(eventData.time, 'See page') },
           { label: 'THEATER', value: safeVal(eventData.location, 'See page') }
         ]
       : [
-          { label: 'TICKET', value: safeVal(ticketNumber) },
-          { label: 'GATE', value: safeVal(eventSeat.gate) },
-          { label: 'VENUE', value: safeVal(eventData.location, 'See page') }
+          { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') },
+          { label: 'GATE', value: safeVal(eventSeat.gate) }
         ],
     backFields: isMovie
       ? [
-          { label: 'TICKET NUMBER', value: safeVal(ticketNumber) },
           { label: 'PASSHOLDER', value: passholderVal },
           { label: 'FILM', value: safeVal(eventData.name, 'Movie') },
+          { label: 'CHAIN', value: safeVal(eventData.location, 'See page') },
           { label: 'DATE', value: safeVal(eventData.date, 'See page') },
           { label: 'TIME', value: safeVal(eventData.time, 'See page') },
           { label: 'THEATER', value: safeVal(eventData.location, 'See page') },
@@ -419,9 +414,9 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
           { label: 'RATING / RUNTIME', value: safeVal(eventData.ratingRuntime, 'N/A') }
         ]
       : [
-          { label: 'TICKET NUMBER', value: safeVal(ticketNumber) },
           { label: 'PASSHOLDER', value: passholderVal },
           { label: 'EVENT', value: safeVal(eventData.name, 'Event') },
+          { label: 'VENUE', value: safeVal(eventData.location, 'See page') },
           { label: 'DATE', value: safeVal(eventData.date, 'See page') },
           { label: 'TIME', value: safeVal(eventData.time, 'See page') },
           { label: 'LOCATION', value: safeVal(eventData.location, 'See page') },
@@ -464,7 +459,7 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
   fs.writeFileSync(filePath, response.data);
   const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
 
-  return { passUrl: `${baseUrl}/passes/${fileName}`, ticketNumber, movieSeat, eventSeat, isMovie };
+  return { passUrl: `${baseUrl}/passes/${fileName}`, movieSeat, eventSeat, isMovie };
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -548,8 +543,36 @@ app.post('/webhook/inbound', async (req, res) => {
       for (const p of pending) p.eventData.time = customTime;
     }
     userState[chatId].waitingForTime = false;
-    userState[chatId].waitingForName = true;
+    userState[chatId].waitingForDate = true;
     userState[chatId].pendingPasses = pending;
+    const scrapedDate = pending[0]?.eventData?.date;
+    const dateKnown = scrapedDate && scrapedDate !== 'See event page' && scrapedDate !== 'See movie page';
+    await sendMessage(chatId, `📅 What date should show on the pass?${dateKnown ? `\nScraped: ${scrapedDate} — reply with a new date or type "skip" to keep it` : `\nCouldn't find a date. Reply with a date (e.g. Sat, Jun 7 2025) or type "skip"`}`);
+    return;
+  }
+
+  if (userState[chatId]?.waitingForDate) {
+    const customDate = incomingMsg.toLowerCase() === 'skip' ? null : incomingMsg;
+    const pending = userState[chatId].pendingPasses;
+    if (customDate) {
+      for (const p of pending) p.eventData.date = customDate;
+    }
+    userState[chatId].waitingForDate = false;
+    userState[chatId].waitingForSeat = true;
+    userState[chatId].pendingPasses = pending;
+    const isMovie = isMovieSite(userState[chatId].selectedType === 'movie' ? 'amc' : 'luma');
+    const seatOptions = userState[chatId].selectedType === 'movie'
+      ? `🎬 Movie seat types:\nGeneral Admission, Recliner, Dolby, IMAX, Premium, VIP, Rooftop, Drive-In`
+      : `🎤 Event seat types:\nGA (General Admission), Floor, Pit, VIP, Lounge, Balcony, Mezzanine, Section, Skybox, Lawn`;
+    await sendMessage(chatId, `💺 What type of seat?\n\n${seatOptions}\n\nType your section/seat type or "skip"`);
+    return;
+  }
+
+  if (userState[chatId]?.waitingForSeat) {
+    const customSeat = incomingMsg.toLowerCase() === 'skip' ? null : incomingMsg.toUpperCase();
+    userState[chatId].seatType = customSeat;
+    userState[chatId].waitingForSeat = false;
+    userState[chatId].waitingForName = true;
     await sendMessage(chatId, `What name should go on the pass?\nReply with a name or type "skip"`);
     return;
   }
@@ -563,11 +586,11 @@ app.post('/webhook/inbound', async (req, res) => {
 
     for (const { eventData, url, site } of pending) {
       try {
-        const { passUrl, ticketNumber, movieSeat, eventSeat, isMovie } = await generatePass(eventData, url, site, name);
+        const { passUrl, movieSeat, eventSeat, isMovie } = await generatePass(eventData, url, site, name, userState[chatId].seatType);
         userState[chatId].lastPassUrl = passUrl;
         const details = isMovie
-          ? `${movieSeat.auditorium} · ROW ${movieSeat.row} · SEAT ${movieSeat.seat} · ${ticketNumber}`
-          : `${eventSeat.section} · ROW ${eventSeat.row} · SEAT ${eventSeat.seat} · ${eventSeat.gate} · ${ticketNumber}`;
+          ? `${movieSeat.auditorium} · ROW ${movieSeat.row} · SEAT ${movieSeat.seat}`
+          : `${eventSeat.section} · ROW ${eventSeat.row} · SEAT ${eventSeat.seat} · ${eventSeat.gate}`;
         await sendMessage(chatId, `✅ ${eventData.name}\n${details}\n\nTap to add to Apple Wallet:\n${passUrl}`);
       } catch (err) {
         console.error(err);
@@ -577,6 +600,7 @@ app.post('/webhook/inbound', async (req, res) => {
 
     userState[chatId].selectedType = null;
     userState[chatId].waitingForUrl = false;
+    userState[chatId].seatType = null;
     return;
   }
 

@@ -53,7 +53,6 @@ const SCRAPE_HEADERS = {
 };
 
 const MOVIE_SITES = ['amc', 'cinemark'];
-const CONCERT_SITES = ['luma', 'eventbrite', 'dice', 'fever'];
 
 function detectSite(url) {
   if (url.includes('lu.ma') || url.includes('luma.com')) return 'luma';
@@ -83,7 +82,6 @@ function safeVal(val, fallback = 'N/A') {
   const str = String(val).trim();
   return str.length > 0 ? str : fallback;
 }
-
 
 function generateMovieSeat() {
   const audNum = Math.floor(Math.random() * 20) + 1;
@@ -123,8 +121,6 @@ function cleanName(name) {
     .replace(/\s*[-–]\s*Buy.*$/i, '')
     .trim().slice(0, 100);
 }
-
-// ─── Scrapers ─────────────────────────────────────────────────────────────────
 
 async function scrapeLuma(url) {
   const slug = url.replace(/\?.*$/, '').replace(/,+$/, '').split('/').pop();
@@ -332,8 +328,6 @@ async function scrapeByUrl(url) {
   return { eventData, site };
 }
 
-// ─── Pass generator ───────────────────────────────────────────────────────────
-
 function validatePayload(payload) {
   const fieldGroups = ['headerFields', 'primaryFields', 'secondaryFields', 'auxiliaryFields', 'backFields'];
   for (const group of fieldGroups) {
@@ -353,81 +347,85 @@ function validatePayload(payload) {
 async function generatePass(eventData, eventUrl, site, passholder = null, seatType = null) {
   const isMovie = isMovieSite(site);
   const color = colorForSite(site);
-  const passholderVal = safeVal(passholder ? passholder.toUpperCase() : null, 'N/A');
+  const passholderVal = safeVal(passholder ? passholder.toUpperCase() : null, 'GUEST');
   const movieSeat = generateMovieSeat();
   const eventSeat = generateEventSeat();
-  // Override section with user-chosen seat type if provided
   if (seatType) {
     if (isMovie) movieSeat.auditorium = seatType;
     else eventSeat.section = seatType;
   }
   const expirationDate = getExpirationDate(eventData.rawDate);
 
-  // KEY FIX: auxiliaryFields is unreliable in WalletWallet — put ALL visible info
-  // into secondaryFields (row 1) and auxiliaryFields (row 2), keeping each ≤ 4 fields.
-  // If auxiliaryFields still doesn't render, secondaryFields has the critical info.
-  const passPayload = {
+  const passPayload = isMovie ? {
     barcodeValue: safeVal(eventUrl, 'https://keypass.app'),
     barcodeFormat: 'QR',
-    logoText: isMovie
-      ? (site === 'amc' ? 'KEYPASS · AMC' : 'KEYPASS · CINEMARK')
-      : 'KEYPASS',
+    logoText: safeVal(eventData.location, site === 'amc' ? 'AMC THEATRES' : 'CINEMARK'),
+    description: safeVal(eventData.name, 'Movie'),
+    organizationName: 'Keypass',
+    colorPreset: color,
+    headerFields: [
+      { label: 'DATE', value: safeVal(eventData.date, 'See page') },
+      { label: 'TIME', value: safeVal(eventData.time, 'See page') }
+    ],
+    primaryFields: [
+      { label: safeVal(eventData.location, site === 'amc' ? 'AMC' : 'CINEMARK'), value: safeVal(eventData.name, 'Movie') }
+    ],
+    secondaryFields: [
+      { label: 'BRING YOUR PHOTO ID', value: passholderVal }
+    ],
+    auxiliaryFields: [
+      { label: 'AUDITORIUM', value: safeVal(movieSeat.auditorium) },
+      { label: 'SEAT', value: safeVal(movieSeat.row) + safeVal(movieSeat.seat) },
+      { label: 'TICKETS', value: '1 ADULT' }
+    ],
+    backFields: [
+      { label: 'PASSHOLDER', value: passholderVal },
+      { label: 'FILM', value: safeVal(eventData.name, 'Movie') },
+      { label: 'THEATER', value: safeVal(eventData.location, 'See page') },
+      { label: 'DATE', value: safeVal(eventData.date, 'See page') },
+      { label: 'TIME', value: safeVal(eventData.time, 'See page') },
+      { label: 'AUDITORIUM', value: safeVal(movieSeat.auditorium) },
+      { label: 'ROW', value: safeVal(movieSeat.row) },
+      { label: 'SEAT', value: safeVal(movieSeat.seat) },
+      { label: 'TICKETS', value: '1 ADULT' },
+      { label: 'RATING / RUNTIME', value: safeVal(eventData.ratingRuntime, 'N/A') }
+    ]
+  } : {
+    barcodeValue: safeVal(eventUrl, 'https://keypass.app'),
+    barcodeFormat: 'QR',
+    logoText: 'KEYPASS',
     description: safeVal(eventData.name, 'Event'),
     organizationName: 'Keypass',
     colorPreset: color,
     headerFields: [
+      { label: 'DATE', value: safeVal(eventData.date, 'See page') },
       { label: 'NAME', value: passholderVal }
     ],
     primaryFields: [
-      { label: isMovie ? 'FILM' : 'EVENT', value: safeVal(eventData.name, 'Event') }
+      { label: 'EVENT', value: safeVal(eventData.name, 'Event') }
     ],
-    // auxiliaryFields never renders — everything must be in secondaryFields
-    secondaryFields: isMovie
-      ? [
-          { label: 'DATE', value: safeVal(eventData.date, 'See page') },
-          { label: 'TIME', value: safeVal(eventData.time, 'See page') },
-          { label: 'AUDITORIUM', value: safeVal(movieSeat.auditorium) },
-          { label: 'ROW / SEAT', value: safeVal(movieSeat.row) + ' / ' + safeVal(movieSeat.seat) }
-        ]
-      : [
-          { label: 'DATE', value: safeVal(eventData.date, 'See page') },
-          { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') },
-          { label: 'SECTION', value: safeVal(eventSeat.section) },
-          { label: 'ROW / SEAT', value: safeVal(eventSeat.row) + ' / ' + safeVal(eventSeat.seat) }
-        ],
-    auxiliaryFields: isMovie
-      ? [
-          { label: 'THEATER', value: safeVal(eventData.location, 'See page') }
-        ]
-      : [
-          { label: 'GATE', value: safeVal(eventSeat.gate) },
-          { label: 'VENUE', value: safeVal(eventData.location, 'See page') }
-        ],
-    backFields: isMovie
-      ? [
-          { label: 'PASSHOLDER', value: passholderVal },
-          { label: 'FILM', value: safeVal(eventData.name, 'Movie') },
-          { label: 'CHAIN', value: safeVal(eventData.location, 'See page') },
-          { label: 'DATE', value: safeVal(eventData.date, 'See page') },
-          { label: 'TIME', value: safeVal(eventData.time, 'See page') },
-          { label: 'THEATER', value: safeVal(eventData.location, 'See page') },
-          { label: 'AUDITORIUM', value: safeVal(movieSeat.auditorium) },
-          { label: 'ROW', value: safeVal(movieSeat.row) },
-          { label: 'SEAT', value: safeVal(movieSeat.seat) },
-          { label: 'RATING / RUNTIME', value: safeVal(eventData.ratingRuntime, 'N/A') }
-        ]
-      : [
-          { label: 'PASSHOLDER', value: passholderVal },
-          { label: 'EVENT', value: safeVal(eventData.name, 'Event') },
-          { label: 'VENUE', value: safeVal(eventData.location, 'See page') },
-          { label: 'DATE', value: safeVal(eventData.date, 'See page') },
-          { label: 'TIME', value: safeVal(eventData.time, 'See page') },
-          { label: 'LOCATION', value: safeVal(eventData.location, 'See page') },
-          { label: 'SECTION', value: safeVal(eventSeat.section) },
-          { label: 'ROW', value: safeVal(eventSeat.row) },
-          { label: 'SEAT', value: safeVal(eventSeat.seat) },
-          { label: 'GATE', value: safeVal(eventSeat.gate) }
-        ]
+    secondaryFields: [
+      { label: 'DATE', value: safeVal(eventData.date, 'See page') },
+      { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') },
+      { label: 'SECTION', value: safeVal(eventSeat.section) },
+      { label: 'ROW / SEAT', value: safeVal(eventSeat.row) + ' / ' + safeVal(eventSeat.seat) }
+    ],
+    auxiliaryFields: [
+      { label: 'GATE', value: safeVal(eventSeat.gate) },
+      { label: 'VENUE', value: safeVal(eventData.location, 'See page') }
+    ],
+    backFields: [
+      { label: 'PASSHOLDER', value: passholderVal },
+      { label: 'EVENT', value: safeVal(eventData.name, 'Event') },
+      { label: 'VENUE', value: safeVal(eventData.location, 'See page') },
+      { label: 'DATE', value: safeVal(eventData.date, 'See page') },
+      { label: 'TIME', value: safeVal(eventData.time, 'See page') },
+      { label: 'SECTION', value: safeVal(eventSeat.section) },
+      { label: 'ROW', value: safeVal(eventSeat.row) },
+      { label: 'SEAT', value: safeVal(eventSeat.seat) },
+      { label: 'GATE', value: safeVal(eventSeat.gate) },
+      { label: 'TICKET', value: 'TKT-' + Math.random().toString(36).toUpperCase().slice(2, 7) }
+    ]
   };
 
   if (expirationDate) passPayload.expirationDate = expirationDate;
@@ -465,8 +463,6 @@ async function generatePass(eventData, eventUrl, site, passholder = null, seatTy
   return { passUrl: `${baseUrl}/passes/${fileName}`, movieSeat, eventSeat, isMovie };
 }
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
-
 app.get('/passes/:filename', (req, res) => {
   const filePath = path.join('/tmp', req.params.filename);
   if (fs.existsSync(filePath)) {
@@ -477,8 +473,6 @@ app.get('/passes/:filename', (req, res) => {
     res.status(404).send('Pass not found');
   }
 });
-
-// ─── Webhook ──────────────────────────────────────────────────────────────────
 
 app.post('/webhook/inbound', async (req, res) => {
   res.sendStatus(200);
@@ -563,7 +557,6 @@ app.post('/webhook/inbound', async (req, res) => {
     userState[chatId].waitingForDate = false;
     userState[chatId].waitingForSeat = true;
     userState[chatId].pendingPasses = pending;
-    const isMovie = isMovieSite(userState[chatId].selectedType === 'movie' ? 'amc' : 'luma');
     const seatOptions = userState[chatId].selectedType === 'movie'
       ? `🎬 Movie seat types:\nGeneral Admission, Recliner, Dolby, IMAX, Premium, VIP, Rooftop, Drive-In`
       : `🎤 Event seat types:\nGA (General Admission), Floor, Pit, VIP, Lounge, Balcony, Mezzanine, Section, Skybox, Lawn`;
@@ -592,7 +585,7 @@ app.post('/webhook/inbound', async (req, res) => {
         const { passUrl, movieSeat, eventSeat, isMovie } = await generatePass(eventData, url, site, name, userState[chatId].seatType);
         userState[chatId].lastPassUrl = passUrl;
         const details = isMovie
-          ? `${movieSeat.auditorium} · ROW ${movieSeat.row} · SEAT ${movieSeat.seat}`
+          ? `AUDITORIUM ${movieSeat.auditorium} · SEAT ${movieSeat.row}${movieSeat.seat}`
           : `${eventSeat.section} · ROW ${eventSeat.row} · SEAT ${eventSeat.seat} · ${eventSeat.gate}`;
         await sendMessage(chatId, `✅ ${eventData.name}\n${details}\n\nTap to add to Apple Wallet:\n${passUrl}`);
       } catch (err) {
@@ -669,8 +662,6 @@ app.post('/webhook/inbound', async (req, res) => {
     return;
   }
 });
-
-// ─── Start ────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {

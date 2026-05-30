@@ -41,14 +41,23 @@ function generateTicketNumber() {
   return 'TKT-' + Math.random().toString(36).toUpperCase().slice(2, 7);
 }
 
-function generateSeat() {
-  const sections = ['GA', 'FLOOR', 'SECTION A', 'SECTION B', 'VIP'];
+function generateSection() {
+  const sections = ['GA', 'FLOOR', 'SEC A', 'SEC B', 'VIP'];
   return sections[Math.floor(Math.random() * sections.length)];
 }
 
 function generateGate() {
-  const gates = ['GATE 1', 'GATE 2', 'GATE 3', 'MAIN ENTRANCE', 'SIDE ENTRANCE'];
+  const gates = ['GATE 1', 'GATE 2', 'GATE 3', 'MAIN', 'SIDE'];
   return gates[Math.floor(Math.random() * gates.length)];
+}
+
+function generateRow() {
+  const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+  return rows[Math.floor(Math.random() * rows.length)];
+}
+
+function generateSeat() {
+  return String(Math.floor(Math.random() * 30) + 1);
 }
 
 function cleanName(name) {
@@ -151,8 +160,10 @@ async function scrapeDice(url) {
 
 async function generatePass(eventData, eventUrl) {
   const ticketNumber = generateTicketNumber();
-  const section = generateSeat();
+  const section = generateSection();
   const gate = generateGate();
+  const row = generateRow();
+  const seat = generateSeat();
 
   const passPayload = {
     barcodeValue: eventUrl,
@@ -160,7 +171,7 @@ async function generatePass(eventData, eventUrl) {
     logoText: 'PASSIFY',
     description: eventData.name,
     organizationName: 'Passify',
-    colorPreset: 'purple',
+    colorPreset: 'dark',
     headerFields: [
       { label: 'DATE', value: eventData.date }
     ],
@@ -168,11 +179,12 @@ async function generatePass(eventData, eventUrl) {
       { label: 'EVENT', value: eventData.name }
     ],
     secondaryFields: [
-      { label: 'TIME', value: eventData.time || 'Doors Open' },
-      { label: 'LOCATION', value: eventData.location }
+      { label: 'SECTION', value: section },
+      { label: 'ROW', value: row },
+      { label: 'SEAT', value: seat }
     ],
     auxiliaryFields: [
-      { label: 'SECTION', value: section },
+      { label: 'TIME', value: eventData.time || 'Doors Open' },
       { label: 'GATE', value: gate },
       { label: 'TICKET', value: ticketNumber }
     ],
@@ -182,6 +194,8 @@ async function generatePass(eventData, eventUrl) {
       { label: 'DATE & TIME', value: `${eventData.date} ${eventData.time}`.trim() },
       { label: 'LOCATION', value: eventData.location },
       { label: 'SECTION', value: section },
+      { label: 'ROW', value: row },
+      { label: 'SEAT', value: seat },
       { label: 'GATE', value: gate },
       { label: 'EVENT LINK', value: eventUrl },
       { label: 'DETAILS', value: eventData.description }
@@ -250,7 +264,7 @@ app.post('/webhook/inbound', async (req, res) => {
 
     const passUrl = await generatePass(eventData, url);
 
-    await sendMessage(chatId, `✅ Here's your pass for "${eventData.name}"!\n\nTap to add to Apple Wallet:\n${passUrl}`);
+    await sendMessage(chatId, `✅ Here's your pass for "${eventData.name}"!\n\nSECTION: ${section} | ROW: ${row} | SEAT: ${seat} | GATE: ${gate}\n\nTap to add to Apple Wallet:\n${passUrl}`);
 
   } catch (err) {
     console.error('Error generating pass:', err.message);

@@ -30,7 +30,6 @@ function detectSite(url) {
   if (url.includes('partiful.com')) return 'partiful';
   if (url.includes('eventbrite.com')) return 'eventbrite';
   if (url.includes('dice.fm')) return 'dice';
-  if (url.includes('ra.co')) return 'ra';
   return null;
 }
 
@@ -53,6 +52,14 @@ function generateGate() {
   return gates[Math.floor(Math.random() * gates.length)];
 }
 
+function cleanImageUrl(url) {
+  if (!url) return null;
+  // reject relative or encoded proxy URLs
+  if (!url.startsWith('http')) return null;
+  if (url.includes('/_next/image') || url.includes('/e/_next')) return null;
+  return url;
+}
+
 async function scrapeLuma(url) {
   const slug = url.replace(/\?.*$/, '').replace(/,+$/, '').split('/').pop();
   console.log(`Luma slug: ${slug}`);
@@ -70,7 +77,7 @@ async function scrapeLuma(url) {
       : '';
     const location = event.location_summary || (event.geo_address_info && event.geo_address_info.full_address) || 'See event page';
     const description = event.description || '';
-    const image = event.cover_url || event.thumbnail_url || null;
+    const image = cleanImageUrl(event.cover_url || event.thumbnail_url || null);
     console.log(`Luma image: ${image}`);
     return { name, date, time, location, description, image };
   } catch (e) {
@@ -78,7 +85,7 @@ async function scrapeLuma(url) {
     const { data } = await axios.get(url.replace(/,+$/, ''), { headers: SCRAPE_HEADERS });
     const $ = cheerio.load(data);
     const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
-    const image = $('meta[property="og:image"]').attr('content') || null;
+    const image = cleanImageUrl($('meta[property="og:image"]').attr('content') || null);
     console.log(`Luma fallback image: ${image}`);
     let date = 'See event page';
     let time = '';
@@ -102,21 +109,39 @@ async function scrapePartiful(url) {
   const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
   const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Party';
-  const date = $('meta[property="event:start_time"]').attr('content') || 'See invite';
-  const location = $('meta[property="event:location"]').attr('content') || 'See invite';
-  const description = $('meta[property="og:description"]').attr('content') || '';
-  const image = $('meta[property="og:image"]').attr('content') || null;
+  const image = cleanImageUrl($('meta[property="og:image"]').attr('content') || null);
   console.log(`Partiful image: ${image}`);
-  return { name, date, time: '', location, description, image };
+
+  // Parse date from meta or fallback to plain string
+  let date = 'See invite';
+  let time = '';
+  const rawDate = $('meta[property="event:start_time"]').attr('content');
+  if (rawDate) {
+    try {
+      const d = new Date(rawDate);
+      date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+      time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    } catch (e) {
+      date = rawDate.slice(0, 50);
+    }
+  }
+
+  const location = ($('meta[property="event:location"]').attr('content') || 'See invite').slice(0, 100);
+  const description = ($('meta[property="og:description"]').attr('content') || '').slice(0, 300);
+  return { name, date, time, location, description, image };
 }
 
 async function scrapeEventbrite(url) {
   const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
   const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
-  const image = $('meta[property="og:image"]').attr('content') || null;
-  console.log(`Eventbrite image: ${image}`);
-  let date = '', time = '', location = '';
+
+  // Use structured data image instead of og:image which is often a proxy URL
+  let image = null;
+  let date = '';
+  let time = '';
+  let location = '';
+
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
       const json = JSON.parse($(el).html());
@@ -127,20 +152,34 @@ async function scrapeEventbrite(url) {
           time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         }
         location = (json.location && json.location.name) || (json.location && json.location.address && json.location.address.streetAddress) || '';
+        // Get image from structured data which is a real URL
+        if (json.image && typeof json.image === 'string') image = cleanImageUrl(json.image);
+        if (json.image && Array.isArray(json.image)) image = cleanImageUrl(json.image[0]);
       }
     } catch (e) {}
   });
+
+  // fallback to og:image only if structured data had nothing
+  if (!image) image = cleanImageUrl($('meta[property="og:image"]').attr('content') || null);
+  console.log(`Eventbrite image: ${image}`);
+
   if (!date) date = 'See event page';
   if (!location) location = 'See event page';
-  const description = $('meta[property="og:description"]').attr('content') || '';
+  const description = ($('meta[property="og:description"]').attr('content') || '').slice(0, 300);
   return { name, date, time, location, description, image };
 }
 
 async function scrapeDice(url) {
   const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
-  const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
-  const image = $('meta[property="og:image"]').attr('content') || null;
+
+  // Clean up Dice event name — strip price and venue suffix
+  let name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
+  // Dice titles look like "Event Name Tickets | $24 | May 30 @ Venue | DICE"
+  // Strip everything from " Tickets" or " | " onward
+  name = name.replace(/\s*[Tt]ickets.*$/, '').replace(/\s*\|.*$/, '').trim() || name;
+
+  const image = cleanImageUrl($('meta[property="og:image"]').attr('content') || null);
   console.log(`Dice image: ${image}`);
   let date = '', time = '', location = '';
   $('script[type="application/ld+json"]').each((_, el) => {
@@ -158,33 +197,7 @@ async function scrapeDice(url) {
   });
   if (!date) date = 'See event page';
   if (!location) location = 'See event page';
-  const description = $('meta[name="description"]').attr('content') || '';
-  return { name, date, time, location, description, image };
-}
-
-async function scrapeRA(url) {
-  const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
-  const $ = cheerio.load(data);
-  const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
-  const image = $('meta[property="og:image"]').attr('content') || null;
-  console.log(`RA image: ${image}`);
-  let date = '', time = '', location = '';
-  $('script[type="application/ld+json"]').each((_, el) => {
-    try {
-      const json = JSON.parse($(el).html());
-      if (json['@type'] === 'DanceEvent' || json['@type'] === 'Event') {
-        if (json.startDate) {
-          const d = new Date(json.startDate);
-          date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-          time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        }
-        location = (json.location && json.location.name) || '';
-      }
-    } catch (e) {}
-  });
-  if (!date) date = 'See event page';
-  if (!location) location = 'See event page';
-  const description = $('meta[name="description"]').attr('content') || '';
+  const description = ($('meta[name="description"]').attr('content') || '').slice(0, 300);
   return { name, date, time, location, description, image };
 }
 
@@ -197,14 +210,14 @@ async function generatePass(eventData, eventUrl) {
     barcodeValue: eventUrl,
     barcodeFormat: 'QR',
     logoText: 'PASSIFY',
-    description: eventData.name,
+    description: eventData.name.slice(0, 100),
     organizationName: 'Passify',
     colorPreset: 'dark',
     headerFields: [{ label: 'DATE', value: eventData.date }],
-    primaryFields: [{ label: 'EVENT', value: eventData.name }],
+    primaryFields: [{ label: 'EVENT', value: eventData.name.slice(0, 100) }],
     secondaryFields: [
       { label: 'TIME', value: eventData.time || 'Doors Open' },
-      { label: 'LOCATION', value: eventData.location }
+      { label: 'LOCATION', value: eventData.location.slice(0, 100) }
     ],
     auxiliaryFields: [
       { label: 'SECTION', value: section },
@@ -213,9 +226,9 @@ async function generatePass(eventData, eventUrl) {
     ],
     backFields: [
       { label: 'TICKET NUMBER', value: ticketNumber },
-      { label: 'EVENT', value: eventData.name },
-      { label: 'DATE & TIME', value: `${eventData.date} ${eventData.time}` },
-      { label: 'LOCATION', value: eventData.location },
+      { label: 'EVENT', value: eventData.name.slice(0, 100) },
+      { label: 'DATE & TIME', value: `${eventData.date} ${eventData.time}`.trim() },
+      { label: 'LOCATION', value: eventData.location.slice(0, 100) },
       { label: 'SECTION', value: section },
       { label: 'GATE', value: gate },
       { label: 'EVENT LINK', value: eventUrl },
@@ -293,7 +306,6 @@ app.post('/webhook/inbound', async (req, res) => {
     if (site === 'partiful') eventData = await scrapePartiful(url);
     if (site === 'eventbrite') eventData = await scrapeEventbrite(url);
     if (site === 'dice') eventData = await scrapeDice(url);
-    if (site === 'ra') eventData = await scrapeRA(url);
 
     const passUrl = await generatePass(eventData, url);
 

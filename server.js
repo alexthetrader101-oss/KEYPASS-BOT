@@ -12,10 +12,7 @@ app.use(express.json());
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 
-// In-memory state per user
 const userState = {};
-
-// ─── TELEGRAM HELPERS ────────────────────────────────────────────────────────
 
 async function sendMessage(chatId, text) {
   await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -23,8 +20,6 @@ async function sendMessage(chatId, text) {
     text: text
   });
 }
-
-// ─── PASS CLEANUP ────────────────────────────────────────────────────────────
 
 function cleanupOldPasses() {
   const tmpDir = '/tmp';
@@ -41,8 +36,6 @@ function cleanupOldPasses() {
 }
 setInterval(cleanupOldPasses, 60 * 60 * 1000);
 
-// ─── SCRAPE HEADERS ──────────────────────────────────────────────────────────
-
 const SCRAPE_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -50,8 +43,6 @@ const SCRAPE_HEADERS = {
   'Accept-Encoding': 'gzip, deflate, br',
   'Connection': 'keep-alive'
 };
-
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
 
 function detectSite(url) {
   if (url.includes('lu.ma') || url.includes('luma.com')) return 'luma';
@@ -72,25 +63,17 @@ function extractURLs(text) {
 function colorForSite(site) {
   const map = {
     luma: 'blue',
-    eventbrite: 'orange',
+    eventbrite: 'dark',
     dice: 'purple',
     fever: 'red',
-    amc: 'red',
+    amc: 'dark',
     cinemark: 'blue'
   };
   return map[site] || 'dark';
 }
 
-async function validateImage(url) {
-  if (!url) return null;
-  try {
-    const response = await axios.head(url, { timeout: 3000, headers: SCRAPE_HEADERS });
-    const contentType = response.headers['content-type'] || '';
-    if (contentType.startsWith('image/')) return url;
-    return null;
-  } catch (e) {
-    return null;
-  }
+function safeVal(val, fallback = 'N/A') {
+  return (val && val.trim()) ? val.trim() : fallback;
 }
 
 function generateTicketNumber() {
@@ -121,8 +104,6 @@ function cleanName(name) {
     .slice(0, 100);
 }
 
-// ─── SCRAPERS ─────────────────────────────────────────────────────────────────
-
 async function scrapeLuma(url) {
   const slug = url.replace(/\?.*$/, '').replace(/,+$/, '').split('/').pop();
   try {
@@ -139,8 +120,7 @@ async function scrapeLuma(url) {
       : '';
     const location = (event.location_summary || (event.geo_address_info && event.geo_address_info.full_address) || 'See event page').slice(0, 100);
     const description = (event.description || '').slice(0, 300);
-    const image = event.cover_url || event.image_url || null;
-    return { name, date, time, location, description, image };
+    return { name, date, time, location, description };
   } catch (e) {
     const { data } = await axios.get(url.replace(/,+$/, ''), { headers: SCRAPE_HEADERS });
     const $ = cheerio.load(data);
@@ -158,8 +138,7 @@ async function scrapeLuma(url) {
     });
     const location = ($('meta[property="event:location"]').attr('content') || 'See event page').slice(0, 100);
     const description = ($('meta[name="description"]').attr('content') || '').slice(0, 300);
-    const image = $('meta[property="og:image"]').attr('content') || null;
-    return { name, date, time, location, description, image };
+    return { name, date, time, location, description };
   }
 }
 
@@ -184,8 +163,7 @@ async function scrapeEventbrite(url) {
   if (!date) date = 'See event page';
   if (!location) location = 'See event page';
   const description = ($('meta[property="og:description"]').attr('content') || '').slice(0, 300);
-  const image = $('meta[property="og:image"]').attr('content') || null;
-  return { name, date, time, location: location.slice(0, 100), description, image };
+  return { name, date, time, location: location.slice(0, 100), description };
 }
 
 async function scrapeDice(url) {
@@ -209,8 +187,7 @@ async function scrapeDice(url) {
   if (!date) date = 'See event page';
   if (!location) location = 'See event page';
   const description = ($('meta[name="description"]').attr('content') || '').slice(0, 300);
-  const image = $('meta[property="og:image"]').attr('content') || null;
-  return { name, date, time, location: location.slice(0, 100), description, image };
+  return { name, date, time, location: location.slice(0, 100), description };
 }
 
 async function scrapeFever(url) {
@@ -243,8 +220,7 @@ async function scrapeFever(url) {
   if (!date) date = 'See event page';
   if (!location) location = ($('meta[property="og:street-address"]').attr('content') || $('meta[property="event:location"]').attr('content') || 'See event page').slice(0, 100);
   const description = ($('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '').slice(0, 300);
-  const image = $('meta[property="og:image"]').attr('content') || null;
-  return { name, date, time, location: location.slice(0, 100), description, image };
+  return { name, date, time, location: location.slice(0, 100), description };
 }
 
 async function scrapeAMC(url) {
@@ -283,8 +259,7 @@ async function scrapeAMC(url) {
   if (!location) location = 'AMC Theatres';
   if (!date) date = 'See movie page';
   const description = ($('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '').slice(0, 300);
-  const image = $('meta[property="og:image"]').attr('content') || null;
-  return { name, date, time, location: location.slice(0, 100), description, image, rating, runtime };
+  return { name, date, time, location: location.slice(0, 100), description, rating, runtime };
 }
 
 async function scrapeCinemark(url) {
@@ -322,8 +297,7 @@ async function scrapeCinemark(url) {
   if (!location) location = 'Cinemark';
   if (!date) date = 'See movie page';
   const description = ($('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '').slice(0, 300);
-  const image = $('meta[property="og:image"]').attr('content') || null;
-  return { name, date, time, location: location.slice(0, 100), description, image, rating, runtime };
+  return { name, date, time, location: location.slice(0, 100), description, rating, runtime };
 }
 
 async function scrapeByUrl(url) {
@@ -337,8 +311,6 @@ async function scrapeByUrl(url) {
   return null;
 }
 
-// ─── PASS GENERATOR ──────────────────────────────────────────────────────────
-
 async function generatePass(eventData, eventUrl, site, passholder = null) {
   const ticketNumber = generateTicketNumber();
   const section = generateSection();
@@ -349,8 +321,6 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
   const isMovie = site === 'amc' || site === 'cinemark';
   const color = colorForSite(site);
 
-  const validatedImage = await validateImage(eventData.image);
-
   const passholderField = passholder
     ? [{ label: 'PASSHOLDER', value: passholder.toUpperCase() }]
     : [];
@@ -359,67 +329,66 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
     barcodeValue: eventUrl,
     barcodeFormat: 'QR',
     logoText: 'KEYPASS',
-    description: eventData.name,
+    description: safeVal(eventData.name, 'Event'),
     organizationName: 'Keypass',
     colorPreset: color,
-    ...(validatedImage ? { stripImage: validatedImage } : {}),
     headerFields: [
-      { label: 'DATE', value: eventData.date }
+      { label: 'DATE', value: safeVal(eventData.date, 'See page') }
     ],
     primaryFields: [
-      { label: isMovie ? 'FILM' : 'EVENT', value: eventData.name }
+      { label: isMovie ? 'FILM' : 'EVENT', value: safeVal(eventData.name, 'Event') }
     ],
     secondaryFields: isMovie
       ? [
-          { label: 'AUDITORIUM', value: auditorium },
-          { label: 'ROW', value: row },
-          { label: 'SEAT', value: seat }
+          { label: 'AUDITORIUM', value: safeVal(auditorium) },
+          { label: 'ROW', value: safeVal(row) },
+          { label: 'SEAT', value: safeVal(seat) }
         ]
       : [
-          { label: 'SECTION', value: section },
-          { label: 'ROW', value: row },
-          { label: 'SEAT', value: seat }
+          { label: 'SECTION', value: safeVal(section) },
+          { label: 'ROW', value: safeVal(row) },
+          { label: 'SEAT', value: safeVal(seat) }
         ],
     auxiliaryFields: isMovie
       ? [
-          { label: 'TIME', value: eventData.time || 'See showtime' },
-          { label: 'THEATER', value: eventData.location },
-          { label: 'TICKET', value: ticketNumber },
+          { label: 'TIME', value: safeVal(eventData.time, 'See showtime') },
+          { label: 'THEATER', value: safeVal(eventData.location, 'See page') },
+          { label: 'TICKET', value: safeVal(ticketNumber) },
           ...passholderField
         ]
       : [
-          { label: 'TIME', value: eventData.time || 'Doors Open' },
-          { label: 'GATE', value: gate },
-          { label: 'TICKET', value: ticketNumber },
+          { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') },
+          { label: 'GATE', value: safeVal(gate) },
+          { label: 'TICKET', value: safeVal(ticketNumber) },
           ...passholderField
         ],
     backFields: isMovie
       ? [
-          { label: 'TICKET NUMBER', value: ticketNumber },
+          { label: 'TICKET NUMBER', value: safeVal(ticketNumber) },
           ...(passholder ? [{ label: 'PASSHOLDER', value: passholder.toUpperCase() }] : []),
-          { label: 'FILM', value: eventData.name },
-          { label: 'SHOWTIME', value: `${eventData.date} ${eventData.time}`.trim() },
-          { label: 'THEATER', value: eventData.location },
-          { label: 'AUDITORIUM', value: auditorium },
-          { label: 'ROW', value: row },
-          { label: 'SEAT', value: seat },
-          ...(eventData.rating ? [{ label: 'RATING', value: eventData.rating }] : []),
-          ...(eventData.runtime ? [{ label: 'RUNTIME', value: eventData.runtime }] : []),
-          { label: 'MOVIE PAGE', value: eventUrl },
-          { label: 'DETAILS', value: eventData.description }
+          { label: 'FILM', value: safeVal(eventData.name, 'Movie') },
+          { label: 'SHOWTIME', value: safeVal(`${eventData.date} ${eventData.time}`.trim(), 'See page') },
+          { label: 'THEATER', value: safeVal(eventData.location, 'See page') },
+          { label: 'AUDITORIUM', value: safeVal(auditorium) },
+          { label: 'ROW', value: safeVal(row) },
+          { label: 'SEAT', value: safeVal(seat) },
+          ...(eventData.rating ? [{ label: 'RATING', value: safeVal(eventData.rating) }] : []),
+          ...(eventData.runtime ? [{ label: 'RUNTIME', value: safeVal(eventData.runtime) }] : []),
+          { label: 'MOVIE PAGE', value: safeVal(eventUrl) },
+          { label: 'DETAILS', value: safeVal(eventData.description, 'N/A') }
         ]
       : [
-          { label: 'TICKET NUMBER', value: ticketNumber },
+          { label: 'TICKET NUMBER', value: safeVal(ticketNumber) },
           ...(passholder ? [{ label: 'PASSHOLDER', value: passholder.toUpperCase() }] : []),
-          { label: 'EVENT', value: eventData.name },
-          { label: 'DATE & TIME', value: `${eventData.date} ${eventData.time}`.trim() },
-          { label: 'LOCATION', value: eventData.location },
-          { label: 'SECTION', value: section },
-          { label: 'ROW', value: row },
-          { label: 'SEAT', value: seat },
-          { label: 'GATE', value: gate },
-          { label: 'EVENT LINK', value: eventUrl },
-          { label: 'DETAILS', value: eventData.description }
+          { label: 'EVENT', value: safeVal(eventData.name, 'Event') },
+          { label: 'DATE & TIME', value: safeVal(`${eventData.date} ${eventData.time}`.trim(), 'See page') },
+          { label: 'LOCATION', value: safeVal(eventData.location, 'See page') },
+          { label: 'SECTION', value: safeVal(section) },
+          { label: 'ROW', value: safeVal(row) },
+          { label: 'SEAT', value: safeVal(seat) },
+          { label: 'GATE', value: safeVal(gate) },
+          { label: 'EVENT LINK', value: safeVal(eventUrl) },
+          { label: 'DETAILS', value: safeVal(eventData.description, 'N/A') }
         ]
   };
 
@@ -447,8 +416,6 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
   };
 }
 
-// ─── ROUTES ──────────────────────────────────────────────────────────────────
-
 app.get('/passes/:filename', (req, res) => {
   const filePath = path.join('/tmp', req.params.filename);
   if (fs.existsSync(filePath)) {
@@ -460,8 +427,6 @@ app.get('/passes/:filename', (req, res) => {
   }
 });
 
-// ─── WEBHOOK ─────────────────────────────────────────────────────────────────
-
 app.post('/webhook/inbound', async (req, res) => {
   res.sendStatus(200);
   const message = req.body.message;
@@ -472,7 +437,6 @@ app.post('/webhook/inbound', async (req, res) => {
 
   console.log(`Received from ${chatId}: ${incomingMsg}`);
 
-  // ── /last command ──
   if (incomingMsg === '/last') {
     const last = userState[chatId]?.lastPassUrl;
     if (last) {
@@ -483,7 +447,6 @@ app.post('/webhook/inbound', async (req, res) => {
     return;
   }
 
-  // ── /help command ──
   if (incomingMsg === '/help') {
     await sendMessage(chatId,
       `🎟️ Keypass Bot\n\nSupported sites:\n• lu.ma\n• eventbrite.com\n• dice.fm\n• feverup.com\n• amctheatres.com\n• cinemark.com\n\nSend one or more URLs to generate passes.\nSend /last to resend your last pass.`
@@ -491,7 +454,6 @@ app.post('/webhook/inbound', async (req, res) => {
     return;
   }
 
-  // ── Waiting for name ──
   if (userState[chatId]?.waitingForName) {
     const name = incomingMsg.toLowerCase() === 'skip' ? null : incomingMsg;
     const pending = userState[chatId].pendingPasses;
@@ -518,7 +480,6 @@ app.post('/webhook/inbound', async (req, res) => {
     return;
   }
 
-  // ── URL detection ──
   const urls = extractURLs(incomingMsg);
   const validUrls = urls.filter(u => detectSite(u));
 
@@ -538,7 +499,6 @@ app.post('/webhook/inbound', async (req, res) => {
 
   if (results.length === 0) return;
 
-  // Send preview
   let preview = `Here's what I found:\n\n`;
   for (const { eventData, site } of results) {
     const isMovie = site === 'amc' || site === 'cinemark';
@@ -558,8 +518,6 @@ app.post('/webhook/inbound', async (req, res) => {
     pendingPasses: results
   };
 });
-
-// ─── START ────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {

@@ -199,6 +199,7 @@ async function generatePass(eventData, eventUrl) {
     logoText: 'PASSIFY',
     description: eventData.name,
     organizationName: 'Passify',
+    colorPreset: 'dark',
     headerFields: [{ label: 'DATE', value: eventData.date }],
     primaryFields: [{ label: 'EVENT', value: eventData.name }],
     secondaryFields: [
@@ -219,17 +220,15 @@ async function generatePass(eventData, eventUrl) {
       { label: 'GATE', value: gate },
       { label: 'EVENT LINK', value: eventUrl },
       { label: 'DETAILS', value: eventData.description.slice(0, 300) }
-    ],
-    color: '#0a0a0a',
-    expirationDays: 30
+    ]
   };
 
   if (eventData.image) {
     console.log(`Adding image to pass: ${eventData.image}`);
     passPayload.stripImageUrl = eventData.image;
-    passPayload.thumbnailUrl = eventData.image;
-    passPayload.logoUrl = eventData.image;
-    passPayload.iconUrl = eventData.image;
+    passPayload.thumbnailURL = eventData.image;
+    passPayload.logoURL = eventData.image;
+    passPayload.iconURL = eventData.image;
   }
 
   console.log(`Pass payload: ${JSON.stringify(passPayload).slice(0, 500)}`);

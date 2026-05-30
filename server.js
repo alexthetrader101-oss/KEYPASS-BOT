@@ -13,10 +13,6 @@ const twilioClient = twilio(
   process.env.TWILIO_AUTH_TOKEN
 );
 
-// ─────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────
-
 function detectSite(url) {
   if (url.includes('lu.ma')) return 'luma';
   if (url.includes('partiful.com')) return 'partiful';
@@ -29,25 +25,20 @@ function extractURL(text) {
   return match ? match[0] : null;
 }
 
-// ─────────────────────────────────────────
-// SCRAPERS
-// ─────────────────────────────────────────
-
 async function scrapeLuma(url) {
-  const slug = url.split('/').pop().split('?')[0];
+  const slug = url.replace(/\?.*$/, '').split('/').pop();
   const { data } = await axios.get(`https://api.lu.ma/public/v1/event/get?url_slug=${slug}`, {
-    headers: { 'User-Agent': 'Mozilla/5.0' }
+    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
   });
   const event = data.event;
   const name = event.name || 'Event';
-  const date = event.start_at ? new Date(event.start_at).toLocaleString() : 'See event page';
+  const date = event.start_at ? new Date(event.start_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'See event page';
   const location = event.location_summary || (event.geo_address_info && event.geo_address_info.full_address) || 'See event page';
   const description = event.description || '';
   return { name, date, location, description };
 }
 
 async function scrapePartiful(url) {
-  // Partiful uses JavaScript rendering so we use Open Graph meta as best effort
   const { data } = await axios.get(url, {
     headers: { 'User-Agent': 'Mozilla/5.0' }
   });
@@ -103,30 +94,29 @@ async function scrapeEventbrite(url) {
   return { name, date, location, description };
 }
 
-// ─────────────────────────────────────────
-// PASS GENERATOR (WalletWallet)
-// ─────────────────────────────────────────
-
 async function generatePass(eventData, eventUrl) {
   const response = await axios.post(
     'https://api.walletwallet.dev/api/pkpass',
     {
       barcodeValue: eventUrl,
       barcodeFormat: 'QR',
-      logoText: eventData.name,
+      logoText: 'KEYPASS',
       description: eventData.name,
-      organizationName: 'Keypass Bot',
+      organizationName: 'Keypass',
       primaryFields: [
         { label: 'EVENT', value: eventData.name }
       ],
       secondaryFields: [
-        { label: 'DATE', value: eventData.date },
+        { label: 'DATE', value: eventData.date }
+      ],
+      auxiliaryFields: [
         { label: 'LOCATION', value: eventData.location }
       ],
       backFields: [
-        { label: 'INFO', value: eventData.description.slice(0, 200) }
+        { label: 'EVENT LINK', value: eventUrl },
+        { label: 'DETAILS', value: eventData.description.slice(0, 200) }
       ],
-      colorPreset: 'dark',
+      colorPreset: 'blue',
       expirationDays: 30
     },
     {
@@ -148,10 +138,6 @@ async function generatePass(eventData, eventUrl) {
   return `${baseUrl}/passes/${fileName}`;
 }
 
-// ─────────────────────────────────────────
-// SERVE PASS FILES
-// ─────────────────────────────────────────
-
 app.get('/passes/:filename', (req, res) => {
   const fs = require('fs');
   const path = require('path');
@@ -165,18 +151,17 @@ app.get('/passes/:filename', (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────
-// WEBHOOK — incoming WhatsApp message
-// ─────────────────────────────────────────
-
 app.post('/webhook/inbound', async (req, res) => {
-  const incomingMsg = req.body.Body || '';
+  const incomingMsg = (req.body.Body || '').trim();
   const fromNumber = req.body.From || '';
 
   console.log(`Received WhatsApp message from ${fromNumber}: ${incomingMsg}`);
+  console.log(`Raw body: ${JSON.stringify(req.body)}`);
 
   const url = extractURL(incomingMsg);
   const site = url ? detectSite(url) : null;
+
+  console.log(`Extracted URL: ${url}, Site: ${site}`);
 
   if (!url || !site) {
     await twilioClient.messages.create({
@@ -210,6 +195,7 @@ app.post('/webhook/inbound', async (req, res) => {
 
   } catch (err) {
     console.error('Error generating pass:', err.message);
+    console.error(err.stack);
     await twilioClient.messages.create({
       body: `❌ Something went wrong: ${err.message}`,
       from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
@@ -219,10 +205,6 @@ app.post('/webhook/inbound', async (req, res) => {
 
   res.sendStatus(200);
 });
-
-// ─────────────────────────────────────────
-// START SERVER
-// ─────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

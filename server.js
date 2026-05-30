@@ -27,15 +27,22 @@ function extractURL(text) {
 
 async function scrapeLuma(url) {
   const slug = url.replace(/\?.*$/, '').split('/').pop();
+  console.log(`Luma slug: ${slug}`);
   const { data } = await axios.get(`https://api.lu.ma/public/v1/event/get?url_slug=${slug}`, {
     headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
   });
+  console.log(`Luma API response: ${JSON.stringify(data).slice(0, 300)}`);
   const event = data.event;
   const name = event.name || 'Event';
-  const date = event.start_at ? new Date(event.start_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'See event page';
+  const date = event.start_at
+    ? new Date(event.start_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    : 'See event page';
+  const time = event.start_at
+    ? new Date(event.start_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : '';
   const location = event.location_summary || (event.geo_address_info && event.geo_address_info.full_address) || 'See event page';
   const description = event.description || '';
-  return { name, date, location, description };
+  return { name, date, time, location, description };
 }
 
 async function scrapePartiful(url) {
@@ -59,7 +66,7 @@ async function scrapePartiful(url) {
     $('meta[property="og:description"]').attr('content') ||
     $('meta[name="description"]').attr('content') ||
     '';
-  return { name, date, location, description };
+  return { name, date, time: '', location, description };
 }
 
 async function scrapeEventbrite(url) {
@@ -72,12 +79,17 @@ async function scrapeEventbrite(url) {
     $('h1').first().text().trim() ||
     'Event';
   let date = '';
+  let time = '';
   let location = '';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
       const json = JSON.parse($(el).html());
       if (json['@type'] === 'Event') {
-        date = json.startDate || '';
+        if (json.startDate) {
+          const d = new Date(json.startDate);
+          date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+          time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
         location =
           (json.location && json.location.name) ||
           (json.location && json.location.address && json.location.address.streetAddress) ||
@@ -91,7 +103,7 @@ async function scrapeEventbrite(url) {
     $('meta[property="og:description"]').attr('content') ||
     $('meta[name="description"]').attr('content') ||
     '';
-  return { name, date, location, description };
+  return { name, date, time, location, description };
 }
 
 async function generatePass(eventData, eventUrl) {
@@ -103,18 +115,21 @@ async function generatePass(eventData, eventUrl) {
       logoText: 'KEYPASS',
       description: eventData.name,
       organizationName: 'Keypass',
+      headerFields: [
+        { label: 'DATE', value: eventData.date }
+      ],
       primaryFields: [
         { label: 'EVENT', value: eventData.name }
       ],
       secondaryFields: [
-        { label: 'DATE', value: eventData.date }
-      ],
-      auxiliaryFields: [
+        { label: 'TIME', value: eventData.time || 'See event' },
         { label: 'LOCATION', value: eventData.location }
       ],
       backFields: [
         { label: 'EVENT LINK', value: eventUrl },
-        { label: 'DETAILS', value: eventData.description.slice(0, 200) }
+        { label: 'DATE & TIME', value: `${eventData.date} ${eventData.time}` },
+        { label: 'LOCATION', value: eventData.location },
+        { label: 'DETAILS', value: eventData.description.slice(0, 300) }
       ],
       colorPreset: 'blue',
       expirationDays: 30

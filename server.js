@@ -221,7 +221,15 @@ async function generatePass(eventData, eventUrl) {
   fs.writeFileSync(filePath, response.data);
 
   const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
-  return `${baseUrl}/passes/${fileName}`;
+
+  return {
+    passUrl: `${baseUrl}/passes/${fileName}`,
+    ticketNumber,
+    section,
+    row,
+    seat,
+    gate
+  };
 }
 
 app.get('/passes/:filename', (req, res) => {
@@ -262,9 +270,9 @@ app.post('/webhook/inbound', async (req, res) => {
     if (site === 'eventbrite') eventData = await scrapeEventbrite(url);
     if (site === 'dice') eventData = await scrapeDice(url);
 
-    const passUrl = await generatePass(eventData, url);
+    const { passUrl, section, row, seat, gate, ticketNumber } = await generatePass(eventData, url);
 
-    await sendMessage(chatId, `✅ Here's your pass for "${eventData.name}"!\n\nSECTION: ${section} | ROW: ${row} | SEAT: ${seat} | GATE: ${gate}\n\nTap to add to Apple Wallet:\n${passUrl}`);
+    await sendMessage(chatId, `✅ Here's your pass for "${eventData.name}"!\n\nSECTION: ${section} | ROW: ${row} | SEAT: ${seat} | GATE: ${gate} | TICKET: ${ticketNumber}\n\nTap to add to Apple Wallet:\n${passUrl}`);
 
   } catch (err) {
     console.error('Error generating pass:', err.message);

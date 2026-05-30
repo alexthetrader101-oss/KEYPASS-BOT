@@ -168,25 +168,25 @@ async function generatePass(eventData, eventUrl) {
   const passPayload = {
     barcodeValue: eventUrl,
     barcodeFormat: 'QR',
-    logoText: 'PASSIFY',
+    logoText: 'KEYPASS',
     description: eventData.name,
-    organizationName: 'Passify',
+    organizationName: 'Keypass',
     colorPreset: 'dark',
     headerFields: [
-      { label: 'DATE', value: eventData.date }
+      { label: 'TICKET', value: ticketNumber }
     ],
     primaryFields: [
-      { label: 'EVENT', value: eventData.name }
-    ],
-    secondaryFields: [
       { label: 'SECTION', value: section },
       { label: 'ROW', value: row },
       { label: 'SEAT', value: seat }
     ],
+    secondaryFields: [
+      { label: 'EVENT', value: eventData.name }
+    ],
     auxiliaryFields: [
+      { label: 'DATE', value: eventData.date },
       { label: 'TIME', value: eventData.time || 'Doors Open' },
-      { label: 'GATE', value: gate },
-      { label: 'TICKET', value: ticketNumber }
+      { label: 'GATE', value: gate }
     ],
     backFields: [
       { label: 'TICKET NUMBER', value: ticketNumber },
@@ -283,7 +283,7 @@ app.post('/webhook/inbound', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-  console.log(`Passify bot running on port ${PORT}`);
+  console.log(`Keypass bot running on port ${PORT}`);
   const webhookUrl = `${process.env.RENDER_EXTERNAL_URL}/webhook/inbound`;
   try {
     await axios.post(`${TELEGRAM_API}/setWebhook`, { url: webhookUrl });

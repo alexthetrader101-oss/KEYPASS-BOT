@@ -392,17 +392,27 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
         ]
   };
 
-  const response = await axios.post(
-    'https://api.walletwallet.dev/api/pkpass',
-    passPayload,
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.WALLETWALLET_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      responseType: 'arraybuffer'
+  let response;
+  try {
+    response = await axios.post(
+      'https://api.walletwallet.dev/api/pkpass',
+      passPayload,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.WALLETWALLET_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        responseType: 'arraybuffer'
+      }
+    );
+  } catch (err) {
+    if (err.response) {
+      const errorBody = Buffer.from(err.response.data).toString('utf8');
+      console.error('WalletWallet 400 error body:', errorBody);
+      throw new Error(`WalletWallet rejected the payload: ${errorBody}`);
     }
-  );
+    throw err;
+  }
 
   const fileName = `pass_${Date.now()}.pkpass`;
   const filePath = path.join('/tmp', fileName);

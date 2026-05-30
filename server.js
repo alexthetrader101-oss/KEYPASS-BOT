@@ -14,15 +14,15 @@ const twilioClient = twilio(
 );
 
 function detectSite(url) {
-  if (url.includes('lu.ma')) return 'luma';
+  if (url.includes('lu.ma') || url.includes('luma.com')) return 'luma';
   if (url.includes('partiful.com')) return 'partiful';
   if (url.includes('eventbrite.com')) return 'eventbrite';
   return null;
 }
 
 function extractURL(text) {
-  const match = text.match(/https?:\/\/[^\s]+/);
-  return match ? match[0] : null;
+  const match = text.match(/https?:\/\/[^\s,]+/);
+  return match ? match[0].replace(/[.,!?]+$/, '') : null;
 }
 
 async function scrapeLuma(url) {
@@ -112,9 +112,9 @@ async function generatePass(eventData, eventUrl) {
     {
       barcodeValue: eventUrl,
       barcodeFormat: 'QR',
-      logoText: 'KEYPASS',
+      logoText: 'PASSIFY',
       description: eventData.name,
-      organizationName: 'Keypass',
+      organizationName: 'Passify',
       headerFields: [
         { label: 'DATE', value: eventData.date }
       ],
@@ -223,5 +223,5 @@ app.post('/webhook/inbound', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Keypass bot running on port ${PORT}`);
+  console.log(`Passify bot running on port ${PORT}`);
 });

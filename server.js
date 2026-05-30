@@ -1,17 +1,21 @@
 const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const twilio = require('twilio');
 require('dotenv').config();
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
+
+async function sendMessage(chatId, text) {
+  await axios.post(`${TELEGRAM_API}/sendMessage`, {
+    chat_id: chatId,
+    text: text
+  });
+}
 
 function detectSite(url) {
   if (url.includes('lu.ma') || url.includes('luma.com')) return 'luma';
@@ -67,10 +71,7 @@ async function scrapeLuma(url) {
       headers: { 'User-Agent': 'Mozilla/5.0' }
     });
     const $ = cheerio.load(data);
-    const name =
-      $('meta[property="og:title"]').attr('content') ||
-      $('h1').first().text().trim() ||
-      'Event';
+    const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
     const image = $('meta[property="og:image"]').attr('content') || null;
     let date = 'See event page';
     let time = '';
@@ -84,10 +85,7 @@ async function scrapeLuma(url) {
         }
       } catch (err) {}
     });
-    const location =
-      $('meta[property="event:location"]').attr('content') ||
-      $('[class*="location"]').first().text().trim() ||
-      'See event page';
+    const location = $('meta[property="event:location"]').attr('content') || $('[class*="location"]').first().text().trim() || 'See event page';
     const description = $('meta[name="description"]').attr('content') || '';
     return { name, date, time, location, description, image };
   }
@@ -215,12 +213,8 @@ async function generatePass(eventData, eventUrl) {
     logoText: 'PASSIFY',
     description: eventData.name,
     organizationName: 'Passify',
-    headerFields: [
-      { label: 'DATE', value: eventData.date }
-    ],
-    primaryFields: [
-      { label: 'EVENT', value: eventData.name }
-    ],
+    headerFields: [{ label: 'DATE', value: eventData.date }],
+    primaryFields: [{ label: 'EVENT', value: eventData.name }],
     secondaryFields: [
       { label: 'TIME', value: eventData.time || 'Doors Open' },
       { label: 'LOCATION', value: eventData.location }
@@ -244,7 +238,6 @@ async function generatePass(eventData, eventUrl) {
     expirationDays: 30
   };
 
-  // Add images if available
   if (eventData.image) {
     passPayload.stripImageUrl = eventData.image;
     passPayload.logoUrl = eventData.image;
@@ -286,27 +279,24 @@ app.get('/passes/:filename', (req, res) => {
 });
 
 app.post('/webhook/inbound', async (req, res) => {
-  const incomingMsg = (req.body.Body || '').trim();
-  const fromNumber = req.body.From || '';
+  res.sendStatus(200);
+  const message = req.body.message;
+  if (!message || !message.text) return;
 
-  console.log(`Received WhatsApp message from ${fromNumber}: ${incomingMsg}`);
+  const chatId = message.chat.id;
+  const incomingMsg = message.text.trim();
+
+  console.log(`Received Telegram message from ${chatId}: ${incomingMsg}`);
 
   const url = extractURL(incomingMsg);
   const site = url ? detectSite(url) : null;
 
   console.log(`Extracted URL: ${url}, Site: ${site}`);
 
-  if (!url || !site) {
-    res.sendStatus(200);
-    return;
-  }
+  if (!url || !site) return;
 
   try {
-    await twilioClient.messages.create({
-      body: `Got it! Building your pass now... 🎟️`,
-      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-      to: fromNumber
-    });
+    await sendMessage(chatId, `Got it! Building your pass now... 🎟️`);
 
     let eventData;
     if (site === 'luma') eventData = await scrapeLuma(url);
@@ -318,26 +308,24 @@ app.post('/webhook/inbound', async (req, res) => {
 
     const passUrl = await generatePass(eventData, url);
 
-    await twilioClient.messages.create({
-      body: `✅ Here's your pass for "${eventData.name}"!\n\nTap to add to Apple Wallet:\n${passUrl}`,
-      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-      to: fromNumber
-    });
+    await sendMessage(chatId, `✅ Here's your pass for "${eventData.name}"!\n\nTap to add to Apple Wallet:\n${passUrl}`);
 
   } catch (err) {
     console.error('Error generating pass:', err.message);
     console.error(err.stack);
-    await twilioClient.messages.create({
-      body: `❌ Something went wrong: ${err.message}`,
-      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-      to: fromNumber
-    });
+    await sendMessage(chatId, `❌ Something went wrong: ${err.message}`);
   }
-
-  res.sendStatus(200);
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Passify bot running on port ${PORT}`);
+  // Register webhook with Telegram
+  const webhookUrl = `${process.env.RENDER_EXTERNAL_URL}/webhook/inbound`;
+  try {
+    await axios.post(`${TELEGRAM_API}/setWebhook`, { url: webhookUrl });
+    console.log(`Telegram webhook set to ${webhookUrl}`);
+  } catch (e) {
+    console.error('Failed to set Telegram webhook:', e.message);
+  }
 });

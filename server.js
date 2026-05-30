@@ -46,6 +46,14 @@ function generateGate() {
   return gates[Math.floor(Math.random() * gates.length)];
 }
 
+const SCRAPE_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.5',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Connection': 'keep-alive'
+};
+
 async function scrapeLuma(url) {
   const slug = url.replace(/\?.*$/, '').replace(/,+$/, '').split('/').pop();
   console.log(`Luma slug: ${slug}`);
@@ -64,15 +72,15 @@ async function scrapeLuma(url) {
     const location = event.location_summary || (event.geo_address_info && event.geo_address_info.full_address) || 'See event page';
     const description = event.description || '';
     const image = event.cover_url || event.thumbnail_url || null;
+    console.log(`Luma image URL: ${image}`);
     return { name, date, time, location, description, image };
   } catch (e) {
     console.log(`Luma API failed (${e.message}), falling back to scrape`);
-    const { data } = await axios.get(url.replace(/,+$/, ''), {
-      headers: { 'User-Agent': 'Mozilla/5.0' }
-    });
+    const { data } = await axios.get(url.replace(/,+$/, ''), { headers: SCRAPE_HEADERS });
     const $ = cheerio.load(data);
     const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
     const image = $('meta[property="og:image"]').attr('content') || null;
+    console.log(`Luma fallback image URL: ${image}`);
     let date = 'See event page';
     let time = '';
     $('script[type="application/ld+json"]').each((_, el) => {
@@ -92,21 +100,23 @@ async function scrapeLuma(url) {
 }
 
 async function scrapePartiful(url) {
-  const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
   const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Party';
   const date = $('meta[property="event:start_time"]').attr('content') || 'See invite';
   const location = $('meta[property="event:location"]').attr('content') || 'See invite';
   const description = $('meta[property="og:description"]').attr('content') || '';
   const image = $('meta[property="og:image"]').attr('content') || null;
+  console.log(`Partiful image URL: ${image}`);
   return { name, date, time: '', location, description, image };
 }
 
 async function scrapeEventbrite(url) {
-  const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
   const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
   const image = $('meta[property="og:image"]').attr('content') || null;
+  console.log(`Eventbrite image URL: ${image}`);
   let date = '', time = '', location = '';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -128,10 +138,11 @@ async function scrapeEventbrite(url) {
 }
 
 async function scrapeDice(url) {
-  const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
   const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
   const image = $('meta[property="og:image"]').attr('content') || null;
+  console.log(`Dice image URL: ${image}`);
   let date = '', time = '', location = '';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -153,10 +164,11 @@ async function scrapeDice(url) {
 }
 
 async function scrapeSongkick(url) {
-  const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
   const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Concert';
   const image = $('meta[property="og:image"]').attr('content') || null;
+  console.log(`Songkick image URL: ${image}`);
   let date = '', time = '', location = '';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -178,10 +190,11 @@ async function scrapeSongkick(url) {
 }
 
 async function scrapeRA(url) {
-  const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
   const name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event';
   const image = $('meta[property="og:image"]').attr('content') || null;
+  console.log(`RA image URL: ${image}`);
   let date = '', time = '', location = '';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -239,9 +252,13 @@ async function generatePass(eventData, eventUrl) {
   };
 
   if (eventData.image) {
+    console.log(`Adding image to pass: ${eventData.image}`);
     passPayload.stripImageUrl = eventData.image;
-    passPayload.logoUrl = eventData.image;
+    passPayload.thumbnailImageUrl = eventData.image;
+    passPayload.logoImageUrl = eventData.image;
   }
+
+  console.log(`Pass payload: ${JSON.stringify(passPayload).slice(0, 500)}`);
 
   const response = await axios.post(
     'https://api.walletwallet.dev/api/pkpass',
@@ -320,7 +337,6 @@ app.post('/webhook/inbound', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Passify bot running on port ${PORT}`);
-  // Register webhook with Telegram
   const webhookUrl = `${process.env.RENDER_EXTERNAL_URL}/webhook/inbound`;
   try {
     await axios.post(`${TELEGRAM_API}/setWebhook`, { url: webhookUrl });

@@ -65,9 +65,9 @@ function colorForSite(site) {
     luma: 'blue',
     eventbrite: 'dark',
     dice: 'purple',
-    fever: 'red',
-    amc: 'dark',
-    cinemark: 'blue'
+    fever: 'dark',
+    amc: 'red',
+    cinemark: 'red'
   };
   return map[site] || 'dark';
 }

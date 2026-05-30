@@ -73,7 +73,9 @@ function colorForSite(site) {
 }
 
 function safeVal(val, fallback = 'N/A') {
-  return (val && val.trim()) ? val.trim() : fallback;
+  if (val === null || val === undefined) return fallback;
+  const str = String(val).trim();
+  return str.length > 0 ? str : fallback;
 }
 
 function generateTicketNumber() {
@@ -117,15 +119,15 @@ async function scrapeLuma(url) {
       : 'See event page';
     const time = event.start_at
       ? new Date(event.start_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-      : '';
+      : 'See event page';
     const location = (event.location_summary || (event.geo_address_info && event.geo_address_info.full_address) || 'See event page').slice(0, 100);
-    const description = (event.description || '').slice(0, 300);
+    const description = (event.description || 'N/A').slice(0, 200);
     return { name, date, time, location, description };
   } catch (e) {
     const { data } = await axios.get(url.replace(/,+$/, ''), { headers: SCRAPE_HEADERS });
     const $ = cheerio.load(data);
-    const name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim());
-    let date = 'See event page', time = '';
+    const name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event');
+    let date = 'See event page', time = 'See event page';
     $('script[type="application/ld+json"]').each((_, el) => {
       try {
         const json = JSON.parse($(el).html());
@@ -137,7 +139,7 @@ async function scrapeLuma(url) {
       } catch (err) {}
     });
     const location = ($('meta[property="event:location"]').attr('content') || 'See event page').slice(0, 100);
-    const description = ($('meta[name="description"]').attr('content') || '').slice(0, 300);
+    const description = ($('meta[name="description"]').attr('content') || 'N/A').slice(0, 200);
     return { name, date, time, location, description };
   }
 }
@@ -146,7 +148,7 @@ async function scrapeEventbrite(url) {
   const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
   const name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event');
-  let date = '', time = '', location = '';
+  let date = 'See event page', time = 'See event page', location = 'See event page';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
       const json = JSON.parse($(el).html());
@@ -156,13 +158,11 @@ async function scrapeEventbrite(url) {
           date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
           time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         }
-        location = (json.location && json.location.name) || (json.location && json.location.address && json.location.address.streetAddress) || '';
+        location = (json.location && json.location.name) || (json.location && json.location.address && json.location.address.streetAddress) || 'See event page';
       }
     } catch (e) {}
   });
-  if (!date) date = 'See event page';
-  if (!location) location = 'See event page';
-  const description = ($('meta[property="og:description"]').attr('content') || '').slice(0, 300);
+  const description = ($('meta[property="og:description"]').attr('content') || 'N/A').slice(0, 200);
   return { name, date, time, location: location.slice(0, 100), description };
 }
 
@@ -170,7 +170,7 @@ async function scrapeDice(url) {
   const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
   const name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event');
-  let date = '', time = '', location = '';
+  let date = 'See event page', time = 'See event page', location = 'See event page';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
       const json = JSON.parse($(el).html());
@@ -180,13 +180,11 @@ async function scrapeDice(url) {
           date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
           time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         }
-        location = (json.location && json.location.name) || '';
+        location = (json.location && json.location.name) || 'See event page';
       }
     } catch (e) {}
   });
-  if (!date) date = 'See event page';
-  if (!location) location = 'See event page';
-  const description = ($('meta[name="description"]').attr('content') || '').slice(0, 300);
+  const description = ($('meta[name="description"]').attr('content') || 'N/A').slice(0, 200);
   return { name, date, time, location: location.slice(0, 100), description };
 }
 
@@ -194,7 +192,7 @@ async function scrapeFever(url) {
   const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
   const name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event');
-  let date = '', time = '', location = '';
+  let date = 'See event page', time = 'See event page', location = 'See event page';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
       const json = JSON.parse($(el).html());
@@ -205,11 +203,11 @@ async function scrapeFever(url) {
           date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
           time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         }
-        location = (event.location && event.location.name) || (event.location && event.location.address && event.location.address.streetAddress) || '';
+        location = (event.location && event.location.name) || (event.location && event.location.address && event.location.address.streetAddress) || 'See event page';
       }
     } catch (e) {}
   });
-  if (!date) {
+  if (date === 'See event page') {
     const ogDate = $('meta[property="event:start_time"]').attr('content') || $('meta[name="date"]').attr('content');
     if (ogDate) {
       const d = new Date(ogDate);
@@ -217,17 +215,30 @@ async function scrapeFever(url) {
       time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }
   }
-  if (!date) date = 'See event page';
-  if (!location) location = ($('meta[property="og:street-address"]').attr('content') || $('meta[property="event:location"]').attr('content') || 'See event page').slice(0, 100);
-  const description = ($('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '').slice(0, 300);
+  if (location === 'See event page') {
+    location = ($('meta[property="og:street-address"]').attr('content') || $('meta[property="event:location"]').attr('content') || 'See event page').slice(0, 100);
+  }
+  const description = ($('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || 'N/A').slice(0, 200);
   return { name, date, time, location: location.slice(0, 100), description };
 }
 
 async function scrapeAMC(url) {
   const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
-  const name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Movie');
-  let date = '', time = '', location = '', rating = '', runtime = '';
+
+  let name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim();
+  if (!name || name.toLowerCase().includes('amc theatres') || name.toLowerCase() === 'amc') {
+    const urlMatch = url.match(/\/movies\/([^\/\?]+)/i);
+    if (urlMatch) {
+      name = urlMatch[1]
+        .replace(/-\d+$/, '')
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase());
+    }
+  }
+  name = cleanName(name || 'Movie');
+
+  let date = 'See movie page', time = 'See movie page', location = 'AMC Theatres', rating = '', runtime = '';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
       const json = JSON.parse($(el).html());
@@ -238,7 +249,7 @@ async function scrapeAMC(url) {
           date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
           time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         }
-        location = (item.location && item.location.name) || '';
+        location = (item.location && item.location.name) || 'AMC Theatres';
         rating = item.contentRating || '';
         if (item.duration) {
           const match = item.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
@@ -251,22 +262,33 @@ async function scrapeAMC(url) {
       }
     } catch (e) {}
   });
-  if (!location) {
+  if (location === 'AMC Theatres') {
     const pageTitle = $('title').text();
     const theaterMatch = pageTitle.match(/at\s+(.+?)(\s*[-|]|$)/i);
     if (theaterMatch) location = theaterMatch[1].trim().slice(0, 100);
   }
-  if (!location) location = 'AMC Theatres';
-  if (!date) date = 'See movie page';
-  const description = ($('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '').slice(0, 300);
-  return { name, date, time, location: location.slice(0, 100), description, rating, runtime };
+  const ratingRuntime = [rating, runtime].filter(Boolean).join(' · ') || 'N/A';
+  const description = ($('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || 'N/A').slice(0, 200);
+  return { name, date, time, location: location.slice(0, 100), description, ratingRuntime };
 }
 
 async function scrapeCinemark(url) {
   const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
-  const name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Movie');
-  let date = '', time = '', location = '', rating = '', runtime = '';
+
+  let name = $('meta[property="og:title"]').attr('content') || $('h1').first().text().trim();
+  if (!name || name.toLowerCase().includes('cinemark')) {
+    const urlMatch = url.match(/\/movies\/([^\/\?]+)/i);
+    if (urlMatch) {
+      name = urlMatch[1]
+        .replace(/-\d+$/, '')
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase());
+    }
+  }
+  name = cleanName(name || 'Movie');
+
+  let date = 'See movie page', time = 'See movie page', location = 'Cinemark', rating = '', runtime = '';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
       const json = JSON.parse($(el).html());
@@ -277,7 +299,7 @@ async function scrapeCinemark(url) {
           date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
           time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         }
-        location = (item.location && item.location.name) || '';
+        location = (item.location && item.location.name) || 'Cinemark';
         rating = item.contentRating || '';
         if (item.duration) {
           const match = item.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
@@ -290,14 +312,13 @@ async function scrapeCinemark(url) {
       }
     } catch (e) {}
   });
-  if (!location) {
+  if (location === 'Cinemark') {
     const theaterMatch = url.match(/\/theatre\/([^\/]+)/i);
     if (theaterMatch) location = theaterMatch[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).slice(0, 100);
   }
-  if (!location) location = 'Cinemark';
-  if (!date) date = 'See movie page';
-  const description = ($('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '').slice(0, 300);
-  return { name, date, time, location: location.slice(0, 100), description, rating, runtime };
+  const ratingRuntime = [rating, runtime].filter(Boolean).join(' · ') || 'N/A';
+  const description = ($('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || 'N/A').slice(0, 200);
+  return { name, date, time, location: location.slice(0, 100), description, ratingRuntime };
 }
 
 async function scrapeByUrl(url) {
@@ -320,10 +341,7 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
   const auditorium = generateAuditorium();
   const isMovie = site === 'amc' || site === 'cinemark';
   const color = colorForSite(site);
-
-  const passholderField = passholder
-    ? [{ label: 'PASSHOLDER', value: passholder.toUpperCase() }]
-    : [];
+  const passholderVal = safeVal(passholder ? passholder.toUpperCase() : null, 'N/A');
 
   const passPayload = {
     barcodeValue: eventUrl,
@@ -333,7 +351,8 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
     organizationName: 'Keypass',
     colorPreset: color,
     headerFields: [
-      { label: 'DATE', value: safeVal(eventData.date, 'See page') }
+      { label: 'DATE', value: safeVal(eventData.date, 'See page') },
+      { label: 'NAME', value: passholderVal }
     ],
     primaryFields: [
       { label: isMovie ? 'FILM' : 'EVENT', value: safeVal(eventData.name, 'Event') }
@@ -351,44 +370,39 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
         ],
     auxiliaryFields: isMovie
       ? [
-          { label: 'TIME', value: safeVal(eventData.time, 'See showtime') },
+          { label: 'TIME', value: safeVal(eventData.time, 'See page') },
           { label: 'THEATER', value: safeVal(eventData.location, 'See page') },
-          { label: 'TICKET', value: safeVal(ticketNumber) },
-          ...passholderField
+          { label: 'TICKET', value: safeVal(ticketNumber) }
         ]
       : [
           { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') },
           { label: 'GATE', value: safeVal(gate) },
-          { label: 'TICKET', value: safeVal(ticketNumber) },
-          ...passholderField
+          { label: 'TICKET', value: safeVal(ticketNumber) }
         ],
     backFields: isMovie
       ? [
           { label: 'TICKET NUMBER', value: safeVal(ticketNumber) },
-          ...(passholder ? [{ label: 'PASSHOLDER', value: passholder.toUpperCase() }] : []),
+          { label: 'PASSHOLDER', value: passholderVal },
           { label: 'FILM', value: safeVal(eventData.name, 'Movie') },
-          { label: 'SHOWTIME', value: safeVal(`${eventData.date} ${eventData.time}`.trim(), 'See page') },
+          { label: 'DATE', value: safeVal(eventData.date, 'See page') },
+          { label: 'TIME', value: safeVal(eventData.time, 'See page') },
           { label: 'THEATER', value: safeVal(eventData.location, 'See page') },
           { label: 'AUDITORIUM', value: safeVal(auditorium) },
           { label: 'ROW', value: safeVal(row) },
           { label: 'SEAT', value: safeVal(seat) },
-          ...(eventData.rating ? [{ label: 'RATING', value: safeVal(eventData.rating) }] : []),
-          ...(eventData.runtime ? [{ label: 'RUNTIME', value: safeVal(eventData.runtime) }] : []),
-          { label: 'MOVIE PAGE', value: safeVal(eventUrl) },
-          { label: 'DETAILS', value: safeVal(eventData.description, 'N/A') }
+          { label: 'RATING / RUNTIME', value: safeVal(eventData.ratingRuntime, 'N/A') }
         ]
       : [
           { label: 'TICKET NUMBER', value: safeVal(ticketNumber) },
-          ...(passholder ? [{ label: 'PASSHOLDER', value: passholder.toUpperCase() }] : []),
+          { label: 'PASSHOLDER', value: passholderVal },
           { label: 'EVENT', value: safeVal(eventData.name, 'Event') },
-          { label: 'DATE & TIME', value: safeVal(`${eventData.date} ${eventData.time}`.trim(), 'See page') },
+          { label: 'DATE', value: safeVal(eventData.date, 'See page') },
+          { label: 'TIME', value: safeVal(eventData.time, 'See page') },
           { label: 'LOCATION', value: safeVal(eventData.location, 'See page') },
           { label: 'SECTION', value: safeVal(section) },
           { label: 'ROW', value: safeVal(row) },
           { label: 'SEAT', value: safeVal(seat) },
-          { label: 'GATE', value: safeVal(gate) },
-          { label: 'EVENT LINK', value: safeVal(eventUrl) },
-          { label: 'DETAILS', value: safeVal(eventData.description, 'N/A') }
+          { label: 'GATE', value: safeVal(gate) }
         ]
   };
 
@@ -513,9 +527,9 @@ app.post('/webhook/inbound', async (req, res) => {
   for (const { eventData, site } of results) {
     const isMovie = site === 'amc' || site === 'cinemark';
     preview += `🎟️ ${eventData.name}\n`;
-    preview += `📅 ${eventData.date}${eventData.time ? ' @ ' + eventData.time : ''}\n`;
+    preview += `📅 ${eventData.date}${eventData.time && eventData.time !== 'See event page' && eventData.time !== 'See movie page' ? ' @ ' + eventData.time : ''}\n`;
     preview += `📍 ${eventData.location}\n`;
-    if (isMovie && eventData.rating) preview += `🎬 ${eventData.rating}${eventData.runtime ? ' · ' + eventData.runtime : ''}\n`;
+    if (isMovie && eventData.ratingRuntime && eventData.ratingRuntime !== 'N/A') preview += `🎬 ${eventData.ratingRuntime}\n`;
     preview += `\n`;
   }
 

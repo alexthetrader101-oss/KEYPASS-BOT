@@ -374,31 +374,32 @@ async function generatePass(eventData, eventUrl, site, passholder = null, seatTy
     organizationName: 'Keypass',
     colorPreset: color,
     headerFields: [
-      { label: 'DATE', value: safeVal(eventData.date, 'See page') },
       { label: 'NAME', value: passholderVal }
     ],
     primaryFields: [
       { label: isMovie ? 'FILM' : 'EVENT', value: safeVal(eventData.name, 'Event') }
     ],
-    // Row 1: seat info + TIME (so time always shows even if aux doesn't render)
-    // 2 fields per row = large, easily readable text
+    // auxiliaryFields never renders — everything must be in secondaryFields
     secondaryFields: isMovie
       ? [
+          { label: 'DATE', value: safeVal(eventData.date, 'See page') },
+          { label: 'TIME', value: safeVal(eventData.time, 'See page') },
           { label: 'AUDITORIUM', value: safeVal(movieSeat.auditorium) },
           { label: 'ROW / SEAT', value: safeVal(movieSeat.row) + ' / ' + safeVal(movieSeat.seat) }
         ]
       : [
+          { label: 'DATE', value: safeVal(eventData.date, 'See page') },
+          { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') },
           { label: 'SECTION', value: safeVal(eventSeat.section) },
           { label: 'ROW / SEAT', value: safeVal(eventSeat.row) + ' / ' + safeVal(eventSeat.seat) }
         ],
     auxiliaryFields: isMovie
       ? [
-          { label: 'TIME', value: safeVal(eventData.time, 'See page') },
           { label: 'THEATER', value: safeVal(eventData.location, 'See page') }
         ]
       : [
-          { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') },
-          { label: 'GATE', value: safeVal(eventSeat.gate) }
+          { label: 'GATE', value: safeVal(eventSeat.gate) },
+          { label: 'VENUE', value: safeVal(eventData.location, 'See page') }
         ],
     backFields: isMovie
       ? [

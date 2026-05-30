@@ -95,7 +95,7 @@ function generateMovieSeat() {
   const audNum = Math.floor(Math.random() * 20) + 1;
   const row = ['A','B','C','D','E','F','G','H','J','K'][Math.floor(Math.random() * 10)];
   const seat = Math.floor(Math.random() * 20) + 1;
-  return { auditorium: `AUDITORIUM ${audNum}`, row, seat: String(seat) };
+  return { auditorium: String(audNum), row, seat: String(seat) };
 }
 
 function generateEventSeat() {
@@ -383,25 +383,25 @@ async function generatePass(eventData, eventUrl, site, passholder = null) {
       { label: isMovie ? 'FILM' : 'EVENT', value: safeVal(eventData.name, 'Event') }
     ],
     // Row 1: seat info + TIME (so time always shows even if aux doesn't render)
-    // ROW+SEAT combined to fit TICKET, AUDITORIUM, ROW/SEAT, TIME in one row
+    // 3 fields per row = larger text, easier to read from a distance
     secondaryFields: isMovie
       ? [
-          { label: 'TICKET', value: safeVal(ticketNumber) },
           { label: 'AUDITORIUM', value: safeVal(movieSeat.auditorium) },
           { label: 'ROW / SEAT', value: safeVal(movieSeat.row) + ' / ' + safeVal(movieSeat.seat) },
           { label: 'TIME', value: safeVal(eventData.time, 'See page') }
         ]
       : [
-          { label: 'TICKET', value: safeVal(ticketNumber) },
           { label: 'SECTION', value: safeVal(eventSeat.section) },
           { label: 'ROW / SEAT', value: safeVal(eventSeat.row) + ' / ' + safeVal(eventSeat.seat) },
           { label: 'TIME', value: safeVal(eventData.time, 'Doors Open') }
         ],
     auxiliaryFields: isMovie
       ? [
+          { label: 'TICKET', value: safeVal(ticketNumber) },
           { label: 'THEATER', value: safeVal(eventData.location, 'See page') }
         ]
       : [
+          { label: 'TICKET', value: safeVal(ticketNumber) },
           { label: 'GATE', value: safeVal(eventSeat.gate) },
           { label: 'VENUE', value: safeVal(eventData.location, 'See page') }
         ],

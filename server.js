@@ -128,7 +128,7 @@ async function scrapeEventbrite(url) {
 async function scrapeDice(url) {
   const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
   const $ = cheerio.load(data);
-  let name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event');
+  const name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event');
   let date = '', time = '', location = '';
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -160,7 +160,7 @@ async function generatePass(eventData, eventUrl) {
     logoText: 'PASSIFY',
     description: eventData.name,
     organizationName: 'Passify',
-    colorPreset: 'blue',
+    colorPreset: 'purple',
     headerFields: [
       { label: 'DATE', value: eventData.date }
     ],

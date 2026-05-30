@@ -29,6 +29,7 @@ function detectSite(url) {
   if (url.includes('lu.ma') || url.includes('luma.com')) return 'luma';
   if (url.includes('eventbrite.com')) return 'eventbrite';
   if (url.includes('dice.fm')) return 'dice';
+  if (url.includes('feverup.com') || url.includes('fever.com')) return 'fever';
   return null;
 }
 
@@ -63,7 +64,7 @@ function generateSeat() {
 function cleanName(name) {
   if (!name) return 'Event';
   return name
-    .replace(/\s*[\|·—]\s*(Partiful|Luma|Dice|Eventbrite).*$/i, '')
+    .replace(/\s*[\|·—]\s*(Partiful|Luma|Dice|Eventbrite|Fever).*$/i, '')
     .replace(/\s*[Tt]ickets.*$/, '')
     .trim()
     .slice(0, 100);
@@ -155,6 +156,44 @@ async function scrapeDice(url) {
   if (!date) date = 'See event page';
   if (!location) location = 'See event page';
   const description = ($('meta[name="description"]').attr('content') || '').slice(0, 300);
+  return { name, date, time, location: location.slice(0, 100), description };
+}
+
+async function scrapeFever(url) {
+  const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
+  const $ = cheerio.load(data);
+  const name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event');
+  let date = '', time = '', location = '';
+
+  // Try JSON-LD first
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const json = JSON.parse($(el).html());
+      const event = Array.isArray(json) ? json.find(j => j['@type'] === 'Event') : (json['@type'] === 'Event' ? json : null);
+      if (event) {
+        if (event.startDate) {
+          const d = new Date(event.startDate);
+          date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+          time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
+        location = (event.location && event.location.name) || (event.location && event.location.address && event.location.address.streetAddress) || '';
+      }
+    } catch (e) {}
+  });
+
+  // Fallback to og tags
+  if (!date) {
+    const ogDate = $('meta[property="event:start_time"]').attr('content') || $('meta[name="date"]').attr('content');
+    if (ogDate) {
+      const d = new Date(ogDate);
+      date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+      time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+  }
+  if (!date) date = 'See event page';
+  if (!location) location = ($('meta[property="og:street-address"]').attr('content') || $('meta[property="event:location"]').attr('content') || 'See event page').slice(0, 100);
+
+  const description = ($('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '').slice(0, 300);
   return { name, date, time, location: location.slice(0, 100), description };
 }
 
@@ -269,6 +308,7 @@ app.post('/webhook/inbound', async (req, res) => {
     if (site === 'luma') eventData = await scrapeLuma(url);
     if (site === 'eventbrite') eventData = await scrapeEventbrite(url);
     if (site === 'dice') eventData = await scrapeDice(url);
+    if (site === 'fever') eventData = await scrapeFever(url);
 
     const { passUrl, section, row, seat, gate, ticketNumber } = await generatePass(eventData, url);
 

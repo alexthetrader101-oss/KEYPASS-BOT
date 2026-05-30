@@ -30,6 +30,8 @@ function detectSite(url) {
   if (url.includes('eventbrite.com')) return 'eventbrite';
   if (url.includes('dice.fm')) return 'dice';
   if (url.includes('feverup.com') || url.includes('fever.com')) return 'fever';
+  if (url.includes('amctheatres.com')) return 'amc';
+  if (url.includes('cinemark.com')) return 'cinemark';
   return null;
 }
 
@@ -61,10 +63,14 @@ function generateSeat() {
   return String(Math.floor(Math.random() * 30) + 1);
 }
 
+function generateAuditorium() {
+  return 'AUDITORIUM ' + String(Math.floor(Math.random() * 20) + 1);
+}
+
 function cleanName(name) {
   if (!name) return 'Event';
   return name
-    .replace(/\s*[\|·—]\s*(Partiful|Luma|Dice|Eventbrite|Fever).*$/i, '')
+    .replace(/\s*[\|·—]\s*(Partiful|Luma|Dice|Eventbrite|Fever|AMC|Cinemark).*$/i, '')
     .replace(/\s*[Tt]ickets.*$/, '')
     .trim()
     .slice(0, 100);
@@ -165,7 +171,6 @@ async function scrapeFever(url) {
   const name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Event');
   let date = '', time = '', location = '';
 
-  // Try JSON-LD first
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
       const json = JSON.parse($(el).html());
@@ -181,7 +186,6 @@ async function scrapeFever(url) {
     } catch (e) {}
   });
 
-  // Fallback to og tags
   if (!date) {
     const ogDate = $('meta[property="event:start_time"]').attr('content') || $('meta[name="date"]').attr('content');
     if (ogDate) {
@@ -197,12 +201,85 @@ async function scrapeFever(url) {
   return { name, date, time, location: location.slice(0, 100), description };
 }
 
+async function scrapeAMC(url) {
+  const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
+  const $ = cheerio.load(data);
+  const name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Movie');
+  let date = '', time = '', location = '';
+
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const json = JSON.parse($(el).html());
+      const item = Array.isArray(json) ? json.find(j => j['@type'] === 'Movie' || j['@type'] === 'ScreeningEvent') : json;
+      if (item) {
+        if (item.startDate) {
+          const d = new Date(item.startDate);
+          date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+          time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
+        location = (item.location && item.location.name) || (item.location && item.location.address && item.location.address.streetAddress) || '';
+      }
+    } catch (e) {}
+  });
+
+  // Try to pull theater name from page title or URL
+  if (!location) {
+    const pageTitle = $('title').text();
+    const theaterMatch = pageTitle.match(/at\s+(.+?)(\s*[-|]|$)/i);
+    if (theaterMatch) location = theaterMatch[1].trim().slice(0, 100);
+  }
+  if (!location) location = 'AMC Theatres';
+  if (!date) date = 'See movie page';
+
+  const description = ($('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '').slice(0, 300);
+  return { name, date, time, location: location.slice(0, 100), description };
+}
+
+async function scrapeCinemark(url) {
+  const { data } = await axios.get(url, { headers: SCRAPE_HEADERS });
+  const $ = cheerio.load(data);
+  const name = cleanName($('meta[property="og:title"]').attr('content') || $('h1').first().text().trim() || 'Movie');
+  let date = '', time = '', location = '';
+
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const json = JSON.parse($(el).html());
+      const item = Array.isArray(json) ? json.find(j => j['@type'] === 'Movie' || j['@type'] === 'ScreeningEvent') : json;
+      if (item) {
+        if (item.startDate) {
+          const d = new Date(item.startDate);
+          date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+          time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
+        location = (item.location && item.location.name) || '';
+      }
+    } catch (e) {}
+  });
+
+  // Try to pull theater name from URL path (cinemark.com/theatre/theatre-name)
+  if (!location) {
+    const theaterMatch = url.match(/\/theatre\/([^\/]+)/i);
+    if (theaterMatch) {
+      location = theaterMatch[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).slice(0, 100);
+    }
+  }
+  if (!location) location = 'Cinemark';
+  if (!date) date = 'See movie page';
+
+  const description = ($('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '').slice(0, 300);
+  return { name, date, time, location: location.slice(0, 100), description };
+}
+
 async function generatePass(eventData, eventUrl) {
   const ticketNumber = generateTicketNumber();
   const section = generateSection();
   const gate = generateGate();
   const row = generateRow();
   const seat = generateSeat();
+  const auditorium = generateAuditorium();
+
+  // Detect if this is a movie ticket to customize fields
+  const isMovie = eventUrl.includes('amctheatres.com') || eventUrl.includes('cinemark.com');
 
   const passPayload = {
     barcodeValue: eventUrl,
@@ -215,30 +292,54 @@ async function generatePass(eventData, eventUrl) {
       { label: 'DATE', value: eventData.date }
     ],
     primaryFields: [
-      { label: 'EVENT', value: eventData.name }
+      { label: isMovie ? 'FILM' : 'EVENT', value: eventData.name }
     ],
-    secondaryFields: [
-      { label: 'SECTION', value: section },
-      { label: 'ROW', value: row },
-      { label: 'SEAT', value: seat }
-    ],
-    auxiliaryFields: [
-      { label: 'TIME', value: eventData.time || 'Doors Open' },
-      { label: 'GATE', value: gate },
-      { label: 'TICKET', value: ticketNumber }
-    ],
-    backFields: [
-      { label: 'TICKET NUMBER', value: ticketNumber },
-      { label: 'EVENT', value: eventData.name },
-      { label: 'DATE & TIME', value: `${eventData.date} ${eventData.time}`.trim() },
-      { label: 'LOCATION', value: eventData.location },
-      { label: 'SECTION', value: section },
-      { label: 'ROW', value: row },
-      { label: 'SEAT', value: seat },
-      { label: 'GATE', value: gate },
-      { label: 'EVENT LINK', value: eventUrl },
-      { label: 'DETAILS', value: eventData.description }
-    ]
+    secondaryFields: isMovie
+      ? [
+          { label: 'AUDITORIUM', value: auditorium },
+          { label: 'ROW', value: row },
+          { label: 'SEAT', value: seat }
+        ]
+      : [
+          { label: 'SECTION', value: section },
+          { label: 'ROW', value: row },
+          { label: 'SEAT', value: seat }
+        ],
+    auxiliaryFields: isMovie
+      ? [
+          { label: 'TIME', value: eventData.time || 'See showtime' },
+          { label: 'THEATER', value: eventData.location },
+          { label: 'TICKET', value: ticketNumber }
+        ]
+      : [
+          { label: 'TIME', value: eventData.time || 'Doors Open' },
+          { label: 'GATE', value: gate },
+          { label: 'TICKET', value: ticketNumber }
+        ],
+    backFields: isMovie
+      ? [
+          { label: 'TICKET NUMBER', value: ticketNumber },
+          { label: 'FILM', value: eventData.name },
+          { label: 'SHOWTIME', value: `${eventData.date} ${eventData.time}`.trim() },
+          { label: 'THEATER', value: eventData.location },
+          { label: 'AUDITORIUM', value: auditorium },
+          { label: 'ROW', value: row },
+          { label: 'SEAT', value: seat },
+          { label: 'MOVIE PAGE', value: eventUrl },
+          { label: 'DETAILS', value: eventData.description }
+        ]
+      : [
+          { label: 'TICKET NUMBER', value: ticketNumber },
+          { label: 'EVENT', value: eventData.name },
+          { label: 'DATE & TIME', value: `${eventData.date} ${eventData.time}`.trim() },
+          { label: 'LOCATION', value: eventData.location },
+          { label: 'SECTION', value: section },
+          { label: 'ROW', value: row },
+          { label: 'SEAT', value: seat },
+          { label: 'GATE', value: gate },
+          { label: 'EVENT LINK', value: eventUrl },
+          { label: 'DETAILS', value: eventData.description }
+        ]
   };
 
   const response = await axios.post(
@@ -267,7 +368,9 @@ async function generatePass(eventData, eventUrl) {
     section,
     row,
     seat,
-    gate
+    gate,
+    auditorium,
+    isMovie
   };
 }
 
@@ -309,10 +412,16 @@ app.post('/webhook/inbound', async (req, res) => {
     if (site === 'eventbrite') eventData = await scrapeEventbrite(url);
     if (site === 'dice') eventData = await scrapeDice(url);
     if (site === 'fever') eventData = await scrapeFever(url);
+    if (site === 'amc') eventData = await scrapeAMC(url);
+    if (site === 'cinemark') eventData = await scrapeCinemark(url);
 
-    const { passUrl, section, row, seat, gate, ticketNumber } = await generatePass(eventData, url);
+    const { passUrl, section, row, seat, gate, auditorium, ticketNumber, isMovie } = await generatePass(eventData, url);
 
-    await sendMessage(chatId, `✅ Here's your pass for "${eventData.name}"!\n\nSECTION: ${section} | ROW: ${row} | SEAT: ${seat} | GATE: ${gate} | TICKET: ${ticketNumber}\n\nTap to add to Apple Wallet:\n${passUrl}`);
+    const details = isMovie
+      ? `AUDITORIUM: ${auditorium} | ROW: ${row} | SEAT: ${seat} | TICKET: ${ticketNumber}`
+      : `SECTION: ${section} | ROW: ${row} | SEAT: ${seat} | GATE: ${gate} | TICKET: ${ticketNumber}`;
+
+    await sendMessage(chatId, `✅ Here's your pass for "${eventData.name}"!\n\n${details}\n\nTap to add to Apple Wallet:\n${passUrl}`);
 
   } catch (err) {
     console.error('Error generating pass:', err.message);
